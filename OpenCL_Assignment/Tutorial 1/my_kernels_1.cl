@@ -4,6 +4,42 @@ kernel void add(global const int* A, global const int* B, global int* C) {
 	C[id] = A[id] + B[id];
 }
 
+// Reduce: Sum of all Vector Elements
+kernel void reduce_sum(global const int* A, global int* B, local int* scratch)
+{
+	int id = get_global_id(0);			// Global Element Workgroup ID
+	int local_id = get_local_id(0);		// Local Element Workgroup ID
+	int N = get_local_size(0);			// Local Element Input Size
+
+	// Store into local memory
+	scratch[local_id] = A[id];
+
+	// Wait for Global to Local memory complete
+	barrier(CLK_LOCAL_MEM_FENCE);
+
+	/*
+		Automated Stride Loop:
+
+		Stride = i (doubled each step) 1 -> 2 -> 4 -> 8 -> 16 etc...
+
+		Add results into Cached Vector and then return the Cached vector to the output vector B
+	*/
+	for (int i = 1; i < N; i *= 2)
+	{
+		if (!(local_id % (i * 2)) && ((local_id + i) < N))
+		{
+			scratch[local_id] += scratch[local_id + i];
+		}
+
+		barrier(CLK_LOCAL_MEM_FENCE);
+	}
+
+	// Add each Thread result together via Atomic_Add into Output Vector
+	if (!local_id) {
+		atomic_add(&B[0], scratch[local_id]);
+	}
+}
+
 //a simple smoothing kernel averaging values in a local window (radius 1)
 kernel void avg_filter(global const int* A, global int* B) {
 	int id = get_global_id(0);

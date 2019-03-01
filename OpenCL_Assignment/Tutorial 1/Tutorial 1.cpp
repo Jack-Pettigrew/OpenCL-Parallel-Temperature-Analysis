@@ -11,6 +11,7 @@
 #endif
 
 #include <iostream>
+#include <stdlib.h>
 #include "Utils.h"
 
 /* Pass
@@ -92,20 +93,23 @@ int main(int argc, char **argv) {
 		}
 #pragma endregion
 		
+		typedef int myType;
 		
 		// ==============  Read temperature file into String Vector  ==============
 		
 		std::vector<string> temperatureInfo;	// Holds file text
-		std::vector<float> temperatureFloats;	// Holds all Temperature Floats
+		std::vector<myType> temperatureValues;	// Holds all Temperature Floats
 
 		// fstream variables
-		fstream file;
+		ifstream file;
 		string fileDir, word;
 
 
 		fileDir = "temp_lincolnshire_short.txt";
-		file.open(fileDir.c_str());
+		file.open(fileDir);
 
+		if (!file.is_open())
+			cout << "File was not found!" << endl;
 
 		// Read entire file for all Temperature Info
 		while (file >> word)
@@ -113,54 +117,84 @@ int main(int argc, char **argv) {
 			temperatureInfo.push_back(word);
 		}
 
-
 		// ==============  Extract Floats from String Vector  ==============
 
 		for (int i = 5; i < temperatureInfo.size(); i += 6)
 		{
 
-			float temp = std::stof(temperatureInfo[i].c_str());
+			float temp = strtof(temperatureInfo[i].c_str(), 0);
 
-			temperatureFloats.push_back(temp);
+			temp *= 10;
+
+			temperatureValues.push_back(temp);
 		}
 
-		//cout << temperatureFloats << endl;
-
+		int numOfElements = temperatureValues.size();
 
 		// ==============  Memory Allocation  ==============
 
-		// Vector size info
-		size_t vector_elements = temperatureFloats.size();					// number of elements
-		size_t vector_size = temperatureFloats.size() * sizeof(int);		// size in bytes
+		size_t local_size = 1000;											// Workgroup size (Too large = CL Size Errors)
+
+		size_t padding_size = temperatureValues.size() % local_size;		// Amount of appenable elements (size_of_vector % workgroup_size)
+
+		/*
+			Workgroup Size Handling:
+
+			If the Workgroup size is larger than the ammount of elements taken from the Input...
+			fill with empty elements to make up the size difference
+		*/
+		if (padding_size)
+		{
+			std::vector<myType> temperature_append(local_size - padding_size, 0);
+
+			temperatureValues.insert(temperatureValues.end(), temperature_append.begin(), temperature_append.end());
+		}
+		
+		size_t input_elements = temperatureValues.size();					// number of elements
+		size_t input_size = temperatureValues.size() * sizeof(myType);		// size in bytes
+		size_t nr_group = input_elements / local_size;						// total number of workgroups to occur
+
+
+		// ==============  Host Output Vector ==============
 
 		// Returned values info
-		std::vector<float> min_value(vector_elements);		// minimum temperature
+		std::vector<myType> B(input_elements);			// Vector B temperature
+		size_t output_size = B.size() * sizeof(myType);	// output vector size in bytes
 
 
 		// ==============  Device Buffers  ==============
 
-		cl::Buffer buffer_temperature_floats(context, CL_MEM_READ_WRITE, vector_size);
-		cl::Buffer buffer_min_value(context, CL_MEM_READ_WRITE, vector_size);
+		// Creates Buffers for transfering Input and Output Vectors
+		cl::Buffer buffer_temperature_floats(context, CL_MEM_READ_ONLY, input_size);
+		cl::Buffer buffer_B(context, CL_MEM_READ_WRITE, output_size);
 
 
 		// ==============  Device Operations  ==============
 
 		// Copy float vector to device memory
-		queue.enqueueWriteBuffer(buffer_temperature_floats, CL_TRUE, 0, vector_size, &temperatureFloats[0]);
+		queue.enqueueWriteBuffer(buffer_temperature_floats, CL_TRUE, 0, input_size, &temperatureValues[0]);
+		// Initialise Output to device memeory
+		queue.enqueueFillBuffer(buffer_B, 0, 0, output_size);
 
-		// Create Kernel call
-		cl::Kernel kernel_min = cl::Kernel(program, "reduce_minValue");
-		kernel_min.setArg(0, temperatureFloats);
-		kernel_min.setArg(1, min_value);
+		// Create Kernel call + Set Args
+		cl::Kernel kernel_1 = cl::Kernel(program, "reduce_sum");
+		kernel_1.setArg(0, buffer_temperature_floats);
+		kernel_1.setArg(1, buffer_B);
+		kernel_1.setArg(2, cl::Local(local_size * sizeof(myType)));	// Local operating memory size
 
-		// Queue Kernel call
-		queue.enqueueNDRangeKernel(kernel_min, cl::NullRange, cl::NDRange(vector_elements), cl::NullRange);
+		// Queue Kernel calls
+		queue.enqueueNDRangeKernel(kernel_1, cl::NullRange, cl::NDRange(input_elements), cl::NDRange(local_size));	// Apply custom workgroup size
 
 		// Get results from device
-		queue.enqueueReadBuffer(buffer_min_value, CL_TRUE, 0, vector_size, &min_value);
+		queue.enqueueReadBuffer(buffer_B, CL_TRUE, 0, output_size, &B[0]);
+
+		float sum = B[0];
+		sum /= 10;
+		float avg = sum / numOfElements;
 
 		// Output Result
-		std::cout << "Min Temp: " << min_value << " degrees" << endl;
+		std::cout << "Sum = " << sum << endl;
+		std::cout << "Average = " << avg << endl;
 
 	}
 	catch (cl::Error err) {
