@@ -1,23 +1,23 @@
-//a simple OpenCL kernel which adds two vectors A and B together into a third vector C
+// a simple OpenCL kernel which adds two vectors A and B together into a third vector C
 kernel void add(global const int* A, global const int* B, global int* C) {
 	int id = get_global_id(0);
 	C[id] = A[id] + B[id];
 }
 
-// Reduce: Sum of all Vector Elements
+// Reduce Sum of all Vector Elements from vector A to B using a local memory Vector scratch
 kernel void reduce_sum(global const int* A, global int* B, local int* scratch)
 {
 	int id = get_global_id(0);			// Global Element Workgroup ID
 	int local_id = get_local_id(0);		// Local Element Workgroup ID
 	int N = get_local_size(0);			// Local Element Input Size
 
-	// Store into local memory
+	// Part 1: Store into local memory
 	scratch[local_id] = A[id];
 
 	// Wait for Global to Local memory complete
 	barrier(CLK_LOCAL_MEM_FENCE);
 
-	/*
+	/* Part 2:
 		Automated Stride Loop:
 
 		Stride = i (doubled each step) 1 -> 2 -> 4 -> 8 -> 16 etc...
@@ -34,9 +34,75 @@ kernel void reduce_sum(global const int* A, global int* B, local int* scratch)
 		barrier(CLK_LOCAL_MEM_FENCE);
 	}
 
-	// Add each Thread result together via Atomic_Add into Output Vector
+	// Part 3: Add each Thread result together via Atomic_Add into Output Vector
 	if (!local_id) {
 		atomic_add(&B[0], scratch[local_id]);
+	}
+}
+
+// Reduce Min value given in vector A outputted in vector B via local memory vector Scratch
+kernel void reduce_min(global const int* A, global int* B, local int* scratch)
+{
+	int id = get_global_id(0);			// Global Element Workgroup ID
+	int local_id = get_local_id(0);		// Local Element Workgroup ID
+	int N = get_local_size(0);			// Local Element Input Size
+
+	// Part 1: Store into local memory
+	scratch[local_id] = A[id];
+
+	// Wait for Global to Local memory complete
+	barrier(CLK_LOCAL_MEM_FENCE);
+
+	// Part 2: Automated Stride Loop:
+	for (int i = 1; i < N; i *= 2)
+	{
+		if (!(local_id % (i * 2)) && ((local_id + i) < N))
+		{
+			if (scratch[local_id + 1] < scratch[local_id])
+			{
+				scratch[local_id] = scratch[local_id + i];
+			}
+		}
+
+		barrier(CLK_LOCAL_MEM_FENCE);
+	}
+	
+	// Part 3: Atomic_Min
+	if (!local_id) {
+		atomic_min(&B[0], scratch[local_id]);
+	}
+}
+
+// Reduce Max value given in vector A outputted in vector B via local memory vector Scratch
+kernel void reduce_max(global const int* A, global int* B, local int* scratch)
+{
+	int id = get_global_id(0);			// Global Element Workgroup ID
+	int local_id = get_local_id(0);		// Local Element Workgroup ID
+	int N = get_local_size(0);			// Local Element Input Size
+
+	// Part 1: Store into local memory
+	scratch[local_id] = A[id];
+
+	// Wait for Global to Local memory complete
+	barrier(CLK_LOCAL_MEM_FENCE);
+
+	// Part 2: Automated Stride Loop:
+	for (int i = 1; i < N; i *= 2)
+	{
+		if (!(local_id % (i * 2)) && ((local_id + i) < N))
+		{
+			if (scratch[local_id + 1] > scratch[local_id])
+			{
+				scratch[local_id] = scratch[local_id + i];
+			}
+		}
+
+		barrier(CLK_LOCAL_MEM_FENCE);
+	}
+
+	// Part 3: Atomic_Min
+	if (!local_id) {
+		atomic_max(&B[0], scratch[local_id]);
 	}
 }
 
