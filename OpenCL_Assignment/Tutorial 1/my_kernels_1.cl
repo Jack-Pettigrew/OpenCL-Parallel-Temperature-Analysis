@@ -54,13 +54,13 @@ kernel void reduce_min(global const int* A, global int* B, local int* scratch)
 	barrier(CLK_LOCAL_MEM_FENCE);
 
 	// Part 2: Automated Stride Loop:
-	for (int i = 1; i < N; i *= 2)
+	for (int stride = 1; stride < N; stride *= 2)
 	{
-		if (!(local_id % (i * 2)) && ((local_id + i) < N))
+		if (!(local_id % (stride * 2)) && ((local_id + stride) < N))
 		{
-			if (scratch[local_id + 1] < scratch[local_id])
+			if (scratch[local_id + stride] < scratch[local_id])
 			{
-				scratch[local_id] = scratch[local_id + i];
+				scratch[local_id] = scratch[local_id + stride];
 			}
 		}
 
@@ -91,7 +91,7 @@ kernel void reduce_max(global const int* A, global int* B, local int* scratch)
 	{
 		if (!(local_id % (i * 2)) && ((local_id + i) < N))
 		{
-			if (scratch[local_id + 1] > scratch[local_id])
+			if (scratch[local_id + i] > scratch[local_id])
 			{
 				scratch[local_id] = scratch[local_id + i];
 			}

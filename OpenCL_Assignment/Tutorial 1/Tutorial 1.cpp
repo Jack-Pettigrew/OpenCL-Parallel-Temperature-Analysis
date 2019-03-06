@@ -133,7 +133,7 @@ int main(int argc, char **argv) {
 
 		// ==============  Memory Allocation  ==============
 
-		size_t local_size = 1000;											// Workgroup size (Too large = CL Size Errors)
+		size_t local_size = 32;												// Workgroup size (Too large = CL Size Errors)
 
 		size_t padding_size = temperatureValues.size() % local_size;		// Amount of appenable elements (size_of_vector % workgroup_size)
 
@@ -159,6 +159,7 @@ int main(int argc, char **argv) {
 
 		// Returned values info
 		std::vector<myType> B(input_elements);			// Vector B temperature
+		std::vector<myType> B_min(input_elements);
 		size_t output_size = B.size() * sizeof(myType);	// output vector size in bytes
 
 
@@ -167,34 +168,48 @@ int main(int argc, char **argv) {
 		// Creates Buffers for transfering Input and Output Vectors
 		cl::Buffer buffer_temperature_floats(context, CL_MEM_READ_ONLY, input_size);
 		cl::Buffer buffer_B(context, CL_MEM_READ_WRITE, output_size);
+		cl::Buffer buffer_B_min(context, CL_MEM_READ_WRITE, output_size);
 
 
 		// ==============  Device Operations  ==============
 
 		// Copy float vector to device memory
 		queue.enqueueWriteBuffer(buffer_temperature_floats, CL_TRUE, 0, input_size, &temperatureValues[0]);
+		
 		// Initialise Output to device memeory
 		queue.enqueueFillBuffer(buffer_B, 0, 0, output_size);
+		queue.enqueueFillBuffer(buffer_B_min, 0, 0, output_size);
 
 		// Create Kernel call + Set Args
 		cl::Kernel kernel_1 = cl::Kernel(program, "reduce_sum");
 		kernel_1.setArg(0, buffer_temperature_floats);
 		kernel_1.setArg(1, buffer_B);
-		kernel_1.setArg(2, cl::Local(local_size * sizeof(myType)));	// Local operating memory size
+		kernel_1.setArg(2, cl::Local(local_size * sizeof(myType)));	// Local Workgroup memory size
+		
+		cl::Kernel kernel_2 = cl::Kernel(program, "reduce_min");
+		kernel_2.setArg(0, buffer_temperature_floats);
+		kernel_2.setArg(1, buffer_B_min);
+		kernel_2.setArg(2, cl::Local(local_size * sizeof(myType)));
 
 		// Queue Kernel calls
 		queue.enqueueNDRangeKernel(kernel_1, cl::NullRange, cl::NDRange(input_elements), cl::NDRange(local_size));	// Apply custom workgroup size
 
-		// Get results from device
+		// Get results openCL device
 		queue.enqueueReadBuffer(buffer_B, CL_TRUE, 0, output_size, &B[0]);
+
+		queue.enqueueNDRangeKernel(kernel_2, cl::NullRange, cl::NDRange(input_elements), cl::NDRange(local_size));
+		queue.enqueueReadBuffer(buffer_B_min, CL_TRUE, 0, output_size, &B_min[0]);
+	
 
 		float sum = B[0];
 		sum /= 10;
 		float avg = sum / numOfElements;
+		float min_value = B_min[0] / 10;
 
 		// Output Result
 		std::cout << "Sum = " << sum << endl;
 		std::cout << "Average = " << avg << endl;
+		std::cout << "Min= " << min_value << endl;
 
 	}
 	catch (cl::Error err) {
