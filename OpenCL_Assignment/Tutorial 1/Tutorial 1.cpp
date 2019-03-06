@@ -56,7 +56,6 @@ int main(int argc, char **argv) {
 		else if (strcmp(argv[i], "-l") == 0) { std::cout << ListPlatformsDevices() << std::endl; }
 		else if (strcmp(argv[i], "-h") == 0) { print_help(); return 0;}
 	}
-
 	//detect any potential exceptions
 	try {
 
@@ -70,7 +69,7 @@ int main(int argc, char **argv) {
 		std::cout << "Running on " << GetPlatformName(platform_id) << ", " << GetDeviceName(platform_id, device_id) << std::endl;
 
 		//create a queue to which we will push commands for the device
-		cl::CommandQueue queue(context);
+		cl::CommandQueue queue(context, CL_QUEUE_PROFILING_ENABLE);
 
 		//2.2 Load & build the device code
 		cl::Program::Sources sources;
@@ -91,6 +90,8 @@ int main(int argc, char **argv) {
 			std::cout << "Build Log:\t " << program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(context.getInfo<CL_CONTEXT_DEVICES>()[0]) << std::endl;
 			throw err;
 		}
+
+		// Enable Profiling
 #pragma endregion
 		
 		typedef int myType;
@@ -105,11 +106,12 @@ int main(int argc, char **argv) {
 		string fileDir, word;
 
 
-		fileDir = "temp_lincolnshire_short.txt";
+		fileDir = "..\\..\\temp_lincolnshire_short.txt";
+		//fileDir = "..\\..\\temp_lincolnshire.txt";
 		file.open(fileDir);
 
 		if (!file.is_open())
-			cout << "File was not found!" << endl;
+			cout << "\nFile was not found!" << endl;
 
 		// Read entire file for all Temperature Info
 		while (file >> word)
@@ -133,12 +135,11 @@ int main(int argc, char **argv) {
 
 		// ==============  Memory Allocation  ==============
 
-		size_t local_size = 32;												// Workgroup size (Too large = CL Size Errors)
+		size_t local_size = 64;												// Workgroup size (Too large = CL Size Errors)
 
 		size_t padding_size = temperatureValues.size() % local_size;		// Amount of appenable elements (size_of_vector % workgroup_size)
 
-		/*
-			Workgroup Size Handling:
+		/* Workgroup Size Handling (Padding):
 
 			If the Workgroup size is larger than the ammount of elements taken from the Input...
 			fill with empty elements to make up the size difference
@@ -158,18 +159,25 @@ int main(int argc, char **argv) {
 		// ==============  Host Output Vector ==============
 
 		// Returned values info
-		std::vector<myType> B(input_elements);			// Vector B temperature
+		std::vector<myType> B_sum(input_elements);
 		std::vector<myType> B_min(input_elements);
-		size_t output_size = B.size() * sizeof(myType);	// output vector size in bytes
+		std::vector<myType> B_max(input_elements);
+		std::vector<myType> B_sort(input_elements);
+		std::vector<myType> B_std(input_elements);
+
+		size_t output_size = B_sum.size() * sizeof(myType);		// Resulting Vector Size
 
 
 		// ==============  Device Buffers  ==============
 
-		// Creates Buffers for transfering Input and Output Vectors
+		// Creates Buffers Input and Output Vectors
 		cl::Buffer buffer_temperature_floats(context, CL_MEM_READ_ONLY, input_size);
-		cl::Buffer buffer_B(context, CL_MEM_READ_WRITE, output_size);
-		cl::Buffer buffer_B_min(context, CL_MEM_READ_WRITE, output_size);
 
+		cl::Buffer buffer_B_sum(context, CL_MEM_READ_WRITE, output_size);
+		cl::Buffer buffer_B_min(context, CL_MEM_READ_WRITE, output_size);
+		cl::Buffer buffer_B_max(context, CL_MEM_READ_WRITE, output_size);
+		cl::Buffer buffer_B_sort(context, CL_MEM_READ_WRITE, output_size);
+		cl::Buffer buffer_B_std(context, CL_MEM_READ_WRITE, output_size);
 
 		// ==============  Device Operations  ==============
 
@@ -177,40 +185,94 @@ int main(int argc, char **argv) {
 		queue.enqueueWriteBuffer(buffer_temperature_floats, CL_TRUE, 0, input_size, &temperatureValues[0]);
 		
 		// Initialise Output to device memeory
-		queue.enqueueFillBuffer(buffer_B, 0, 0, output_size);
+		queue.enqueueFillBuffer(buffer_B_sum, 0, 0, output_size);
 		queue.enqueueFillBuffer(buffer_B_min, 0, 0, output_size);
+		queue.enqueueFillBuffer(buffer_B_max, 0, 0, output_size);
+		queue.enqueueFillBuffer(buffer_B_sort, 0, 0, output_size);
+		queue.enqueueFillBuffer(buffer_B_std, 0, 0, output_size);
 
 		// Create Kernel call + Set Args
-		cl::Kernel kernel_1 = cl::Kernel(program, "reduce_sum");
-		kernel_1.setArg(0, buffer_temperature_floats);
-		kernel_1.setArg(1, buffer_B);
-		kernel_1.setArg(2, cl::Local(local_size * sizeof(myType)));	// Local Workgroup memory size
+		cl::Kernel kernel_sum = cl::Kernel(program, "reduce_sum");
+		kernel_sum.setArg(0, buffer_temperature_floats);
+		kernel_sum.setArg(1, buffer_B_sum);
+		kernel_sum.setArg(2, cl::Local(local_size * sizeof(myType)));	// Local Workgroup memory size
 		
-		cl::Kernel kernel_2 = cl::Kernel(program, "reduce_min");
-		kernel_2.setArg(0, buffer_temperature_floats);
-		kernel_2.setArg(1, buffer_B_min);
-		kernel_2.setArg(2, cl::Local(local_size * sizeof(myType)));
+		cl::Kernel kernel_min = cl::Kernel(program, "reduce_min");
+		kernel_min.setArg(0, buffer_temperature_floats);
+		kernel_min.setArg(1, buffer_B_min);
+		kernel_min.setArg(2, cl::Local(local_size * sizeof(myType)));
 
-		// Queue Kernel calls
-		queue.enqueueNDRangeKernel(kernel_1, cl::NullRange, cl::NDRange(input_elements), cl::NDRange(local_size));	// Apply custom workgroup size
+		cl::Kernel kernel_max = cl::Kernel(program, "reduce_max");
+		kernel_max.setArg(0, buffer_temperature_floats);
+		kernel_max.setArg(1, buffer_B_max);
+		kernel_max.setArg(2, cl::Local(local_size * sizeof(myType)));
+		
+		cl::Kernel kernel_sort = cl::Kernel(program, "sort");
+		kernel_sort.setArg(0, buffer_temperature_floats);
+		kernel_sort.setArg(1, buffer_B_sort);
+		kernel_sort.setArg(2, cl::Local(local_size * sizeof(myType)));
+		
+		cl::Kernel kernel_std = cl::Kernel(program, "std_dev");
+		kernel_std.setArg(0, buffer_temperature_floats);
+		kernel_std.setArg(1, buffer_B_std);
+		kernel_std.setArg(2, buffer_B_sum);
+		kernel_std.setArg(3, cl::Local(local_size * sizeof(myType)));
 
-		// Get results openCL device
-		queue.enqueueReadBuffer(buffer_B, CL_TRUE, 0, output_size, &B[0]);
+		// Create profiling Event
+		cl::Event profiling_event;
+		cl::Event profiling_min;
+		cl::Event profiling_max;
+		cl::Event profiling_sort;
+		cl::Event profiling_std;
 
-		queue.enqueueNDRangeKernel(kernel_2, cl::NullRange, cl::NDRange(input_elements), cl::NDRange(local_size));
+		// Queue Kernel calls + Get Results from OpenCL devices (w/ profiling events)
+		queue.enqueueNDRangeKernel(kernel_sum, cl::NullRange, cl::NDRange(input_elements), cl::NDRange(local_size), NULL, &profiling_event);	// Apply custom workgroup size
+		queue.enqueueReadBuffer(buffer_B_sum, CL_TRUE, 0, output_size, &B_sum[0]);
+
+		queue.enqueueNDRangeKernel(kernel_min, cl::NullRange, cl::NDRange(input_elements), cl::NDRange(local_size), NULL, &profiling_min);
 		queue.enqueueReadBuffer(buffer_B_min, CL_TRUE, 0, output_size, &B_min[0]);
 	
+		queue.enqueueNDRangeKernel(kernel_max, cl::NullRange, cl::NDRange(input_elements), cl::NDRange(local_size), NULL, &profiling_max);
+		queue.enqueueReadBuffer(buffer_B_max, CL_TRUE, 0, output_size, &B_max[0]);
+		
+		queue.enqueueNDRangeKernel(kernel_sort, cl::NullRange, cl::NDRange(input_elements), cl::NDRange(local_size), NULL, &profiling_sort);
+		queue.enqueueReadBuffer(buffer_B_sort, CL_TRUE, 0, output_size, &B_sort[0]);
+		
+		queue.enqueueNDRangeKernel(kernel_std, cl::NullRange, cl::NDRange(input_elements), cl::NDRange(local_size), NULL, &profiling_std);
+		queue.enqueueReadBuffer(buffer_B_std, CL_TRUE, 0, output_size, &B_std[0]);
 
-		float sum = B[0];
-		sum /= 10;
+		float sum = B_sum[0] / 10;
 		float avg = sum / numOfElements;
-		float min_value = B_min[0] / 10;
+		float min_value = (float)B_min[0] / 10.0f;
+		float max_value = (float)B_max[0] / 10.0f;
+		float variance = (B_std[0] / B_std.size()) / 10.0f;
+		float std_dev = sqrt(variance);
 
-		// Output Result
+		// Output Results + Profiling
+		std::cout << "\nProgram Execution Completed!\n" << endl;
+
+		std::cout << GetFullProfilingInfo(profiling_event, ProfilingResolution::PROF_US) << endl;
+		std::cout << "Workgroup Size: " << local_size << endl << endl;
+
 		std::cout << "Sum = " << sum << endl;
 		std::cout << "Average = " << avg << endl;
-		std::cout << "Min= " << min_value << endl;
+		std::cout << "Time to finish: " << profiling_event.getProfilingInfo<CL_PROFILING_COMMAND_END>() - profiling_event.getProfilingInfo<CL_PROFILING_COMMAND_START>() << " ns \n" << endl;;
 
+		std::cout << "Min = " << min_value << endl;
+		std::cout << "Time to finish: " << profiling_min.getProfilingInfo<CL_PROFILING_COMMAND_END>() - profiling_min.getProfilingInfo<CL_PROFILING_COMMAND_START>() << " ns \n" << endl;;
+
+		std::cout << "Max = " << max_value << endl;
+		std::cout << "Time to finish: " << profiling_max.getProfilingInfo<CL_PROFILING_COMMAND_END>() - profiling_max.getProfilingInfo<CL_PROFILING_COMMAND_START>() << " ns \n" << endl;;
+
+		std::cout << "Median = " << (float)B_sort[(0.50 * B_sort.size())] / 10 << endl;
+		std::cout << "25th Percentile = " << (float)B_sort[(0.25 * B_sort.size())] / 10 << endl;
+		std::cout << "75th Percentile = " << (float)B_sort[(0.75 * B_sort.size())] / 10 << endl;
+		std::cout << "Time to finish: " << profiling_sort.getProfilingInfo<CL_PROFILING_COMMAND_END>() - profiling_sort.getProfilingInfo<CL_PROFILING_COMMAND_START>() << " ns \n" << endl;
+
+		std::cout << "Std Deviation = " << std_dev << endl;
+
+
+		std::cout << "Total Program Execution Time: " << profiling_max.getProfilingInfo<CL_PROFILING_COMMAND_END>() - profiling_event.getProfilingInfo<CL_PROFILING_COMMAND_START>() << " ns \n" << endl;
 	}
 	catch (cl::Error err) {
 		std::cerr << "ERROR: " << err.what() << ", " << getErrorString(err.err()) << std::endl;

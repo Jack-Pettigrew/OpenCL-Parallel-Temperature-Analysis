@@ -9,7 +9,7 @@ kernel void reduce_sum(global const int* A, global int* B, local int* scratch)
 {
 	int id = get_global_id(0);			// Global Element Workgroup ID
 	int local_id = get_local_id(0);		// Local Element Workgroup ID
-	int N = get_local_size(0);			// Local Element Input Size
+	int N = get_local_size(0);			// Size of Local Workgroup
 
 	// Part 1: Store into local memory
 	scratch[local_id] = A[id];
@@ -43,9 +43,9 @@ kernel void reduce_sum(global const int* A, global int* B, local int* scratch)
 // Reduce Min value given in vector A outputted in vector B via local memory vector Scratch
 kernel void reduce_min(global const int* A, global int* B, local int* scratch)
 {
-	int id = get_global_id(0);			// Global Element Workgroup ID
-	int local_id = get_local_id(0);		// Local Element Workgroup ID
-	int N = get_local_size(0);			// Local Element Input Size
+	int id = get_global_id(0);	
+	int local_id = get_local_id(0);
+	int N = get_local_size(0);	
 
 	// Part 1: Store into local memory
 	scratch[local_id] = A[id];
@@ -87,13 +87,13 @@ kernel void reduce_max(global const int* A, global int* B, local int* scratch)
 	barrier(CLK_LOCAL_MEM_FENCE);
 
 	// Part 2: Automated Stride Loop:
-	for (int i = 1; i < N; i *= 2)
+	for (int stride = 1; stride < N; stride *= 2)
 	{
-		if (!(local_id % (i * 2)) && ((local_id + i) < N))
+		if (!(local_id % (stride * 2)) && ((local_id + stride) < N))
 		{
-			if (scratch[local_id + i] > scratch[local_id])
+			if (scratch[local_id + stride] > scratch[local_id])
 			{
-				scratch[local_id] = scratch[local_id + i];
+				scratch[local_id] = scratch[local_id + stride];
 			}
 		}
 
@@ -104,6 +104,75 @@ kernel void reduce_max(global const int* A, global int* B, local int* scratch)
 	if (!local_id) {
 		atomic_max(&B[0], scratch[local_id]);
 	}
+}
+
+/*	Sort Input into Numerical Order
+
+	As referenced by Eric Bainville: http://www.bealto.com/gpu-sorting_parallel-selection.html
+*/
+kernel void sort(global const int* A, global int* B, local int* scratch)
+{
+	int id = get_global_id(0);      // Global ID
+	int local_id = get_local_id(0);	// Local ID
+	int N = get_global_size(0);     // Input size
+	int wg = get_local_size(0);     // Workgroup size
+	int iKey = A[id];				// Input key for current thread
+
+	// Output index position
+	int pos = 0;
+
+	for (int i = 0; i < N ; i += wg)
+	{
+		barrier(CLK_LOCAL_MEM_FENCE);
+
+		for (int index = local_id; index < wg; index += wg)
+		{
+			scratch[index] = A[i + index];
+		}
+
+		barrier(CLK_LOCAL_MEM_FENCE);
+
+		// Loop on all values in Scratch
+		for (int index = 0; index < wg; index++)
+		{
+			int jKey = scratch[index];
+			bool smaller = (jKey < iKey) || (jKey == iKey && (i + index) < id); // in[j] < in[i] ?
+			pos += (smaller) ? 1 : 0;
+		}
+	}
+
+	B[pos] = iKey;
+
+}
+
+// Returns Vector containing Standard Deviation of the input set (A)
+kernel void std_dev(global const int* A, global int* B, global const int* sum, local int* scratch)
+{
+	int id = get_global_id(0);
+	int local_id = get_local_id(0);
+	int N = get_local_size(0);
+
+	// Mean
+	int avg = sum[0] / get_global_size(0);
+
+	// Copy Input per Workgroup Item
+	scratch[local_id] = ((A[id] - avg) * (A[id] - avg)) / 10;
+
+	barrier(CLK_LOCAL_MEM_FENCE);
+
+	// Reduction Addition
+	for (int i = 1; i < N; i *= 2)
+	{
+		if (!(local_id % (i * 2)) && ((local_id + i) < N))
+		{
+			scratch[local_id] += scratch[local_id + i];
+		}
+
+		barrier(CLK_LOCAL_MEM_FENCE);
+	}
+
+	if (!local_id)
+		atomic_add(&B[0], scratch[local_id]);
 }
 
 //a simple smoothing kernel averaging values in a local window (radius 1)
