@@ -25,7 +25,7 @@
 - Clear Coding style with comments
 
    2:1
-- Optimised Kernels using real temperature values
+- Optimised Kernels using real temperature values FLOAT VALUES
 - Program performance well reported and interpreted
 - Well commented code
 
@@ -36,6 +36,7 @@
 - Optimised, efficient, well-structured, commented in detail
 */
 
+// Launch Arguments (e.g. "Tutorial1 - p")
 void print_help() {
 	std::cerr << "Application usage:" << std::endl;
 
@@ -45,7 +46,9 @@ void print_help() {
 	std::cerr << "  -h : print this message" << std::endl;
 }
 
-int main(int argc, char **argv) {
+int main(int argc, char **argv) 
+{
+
 	//Part 1 - handle command line options such as device selection, verbosity, etc.
 	int platform_id = 0;
 	int device_id = 0;
@@ -56,31 +59,34 @@ int main(int argc, char **argv) {
 		else if (strcmp(argv[i], "-l") == 0) { std::cout << ListPlatformsDevices() << std::endl; }
 		else if (strcmp(argv[i], "-h") == 0) { print_help(); return 0;}
 	}
-	//detect any potential exceptions
+
+	// Detect any potential exceptions
 	try {
 
+		// OpenCL Init procedure
 #pragma region Setup
 
-		//Part 2 - host operations
-		//2.1 Select computing devices
+		// Part 2 - host operations
+
+		// 2.1 Select computing devices
 		cl::Context context = GetContext(platform_id, device_id);
 
-		//display the selected device
+		// Display the selected device
 		std::cout << "Running on " << GetPlatformName(platform_id) << ", " << GetDeviceName(platform_id, device_id) << std::endl;
 
-		//create a queue to which we will push commands for the device
+		// Create a queue to which we will push commands for the device
 		cl::CommandQueue queue(context, CL_QUEUE_PROFILING_ENABLE);
 
-		//2.2 Load & build the device code
+		// 2.2 Load & build the device code
 		cl::Program::Sources sources;
 
 		// Load kernel to sources
 		AddSources(sources, "my_kernels_1.cl");
 
-		// Create program from Context and Sources
+		// Create program from Context + Sources
 		cl::Program program(context, sources);
 
-		//build and debug the kernel code
+		// Build + Debug the Kernel code
 		try {
 			program.build();
 		}
@@ -91,7 +97,6 @@ int main(int argc, char **argv) {
 			throw err;
 		}
 
-		// Enable Profiling
 #pragma endregion
 		
 		typedef int myType;
@@ -105,7 +110,7 @@ int main(int argc, char **argv) {
 		ifstream file;
 		string fileDir, word;
 
-
+		// Directory of Temperature Files
 		fileDir = "..\\..\\temp_lincolnshire_short.txt";
 		//fileDir = "..\\..\\temp_lincolnshire.txt";
 		file.open(fileDir);
@@ -113,44 +118,44 @@ int main(int argc, char **argv) {
 		if (!file.is_open())
 			cout << "\nFile was not found!" << endl;
 
-		// Read entire file for all Temperature Info
+		
+		// ==============  Extract Floats from String Vector  ==============
+
+		// Read fileDir for raw input
 		while (file >> word)
 		{
 			temperatureInfo.push_back(word);
 		}
 
-		// ==============  Extract Floats from String Vector  ==============
-
+		// Extract temp values from raw Vector
 		for (int i = 5; i < temperatureInfo.size(); i += 6)
 		{
-
 			float temp = strtof(temperatureInfo[i].c_str(), 0);
-
 			temp *= 10;
-
 			temperatureValues.push_back(temp);
 		}
 
 		int numOfElements = temperatureValues.size();
 
+
 		// ==============  Memory Allocation  ==============
 
-		size_t local_size = 64;												// Workgroup size (Too large = CL Size Errors)
+		size_t local_size = 64;												// OpenCL device Workgroup size (Too large = CL Size Errors)
 
-		size_t padding_size = temperatureValues.size() % local_size;		// Amount of appenable elements (size_of_vector % workgroup_size)
+		size_t padding_size = temperatureValues.size() % local_size;		// Amount of appenable elements ('0')
 
 		/* Workgroup Size Handling (Padding):
 
-			If the Workgroup size is larger than the ammount of elements taken from the Input...
-			fill with empty elements to make up the size difference
+			If the Workgroup size is larger than the ammount of input elements...
+			...fill with empty elements to make up the size difference
 		*/
 		if (padding_size)
 		{
 			std::vector<myType> temperature_append(local_size - padding_size, 0);
-
 			temperatureValues.insert(temperatureValues.end(), temperature_append.begin(), temperature_append.end());
 		}
 		
+		// OpenCL data values
 		size_t input_elements = temperatureValues.size();					// number of elements
 		size_t input_size = temperatureValues.size() * sizeof(myType);		// size in bytes
 		size_t nr_group = input_elements / local_size;						// total number of workgroups to occur
@@ -165,7 +170,8 @@ int main(int argc, char **argv) {
 		std::vector<myType> B_sort(input_elements);
 		std::vector<myType> B_std(input_elements);
 
-		size_t output_size = B_sum.size() * sizeof(myType);		// Resulting Vector Size
+		// Resulting Vector Size
+		size_t output_size = B_sum.size() * sizeof(myType);
 
 
 		// ==============  Device Buffers  ==============
@@ -179,12 +185,13 @@ int main(int argc, char **argv) {
 		cl::Buffer buffer_B_sort(context, CL_MEM_READ_WRITE, output_size);
 		cl::Buffer buffer_B_std(context, CL_MEM_READ_WRITE, output_size);
 
+
 		// ==============  Device Operations  ==============
 
-		// Copy float vector to device memory
+		// Copy vector to device memory
 		queue.enqueueWriteBuffer(buffer_temperature_floats, CL_TRUE, 0, input_size, &temperatureValues[0]);
 		
-		// Initialise Output to device memeory
+		// Initialise output buffers to device memeory
 		queue.enqueueFillBuffer(buffer_B_sum, 0, 0, output_size);
 		queue.enqueueFillBuffer(buffer_B_min, 0, 0, output_size);
 		queue.enqueueFillBuffer(buffer_B_max, 0, 0, output_size);
@@ -218,7 +225,7 @@ int main(int argc, char **argv) {
 		kernel_std.setArg(2, buffer_B_sum);
 		kernel_std.setArg(3, cl::Local(local_size * sizeof(myType)));
 
-		// Create profiling Event
+		// Create profiling Events
 		cl::Event profiling_event;
 		cl::Event profiling_min;
 		cl::Event profiling_max;
@@ -226,7 +233,7 @@ int main(int argc, char **argv) {
 		cl::Event profiling_std;
 
 		// Queue Kernel calls + Get Results from OpenCL devices (w/ profiling events)
-		queue.enqueueNDRangeKernel(kernel_sum, cl::NullRange, cl::NDRange(input_elements), cl::NDRange(local_size), NULL, &profiling_event);	// Apply custom workgroup size
+		queue.enqueueNDRangeKernel(kernel_sum, cl::NullRange, cl::NDRange(input_elements), cl::NDRange(local_size), NULL, &profiling_event);	
 		queue.enqueueReadBuffer(buffer_B_sum, CL_TRUE, 0, output_size, &B_sum[0]);
 
 		queue.enqueueNDRangeKernel(kernel_min, cl::NullRange, cl::NDRange(input_elements), cl::NDRange(local_size), NULL, &profiling_min);
@@ -241,6 +248,7 @@ int main(int argc, char **argv) {
 		queue.enqueueNDRangeKernel(kernel_std, cl::NullRange, cl::NDRange(input_elements), cl::NDRange(local_size), NULL, &profiling_std);
 		queue.enqueueReadBuffer(buffer_B_std, CL_TRUE, 0, output_size, &B_std[0]);
 
+		// Get result from first element of each Vector
 		float sum = B_sum[0] / 10;
 		float avg = sum / numOfElements;
 		float min_value = (float)B_min[0] / 10.0f;
@@ -248,31 +256,31 @@ int main(int argc, char **argv) {
 		float variance = (B_std[0] / B_std.size()) / 10.0f;
 		float std_dev = sqrt(variance);
 
-		// Output Results + Profiling
+		// ==============  Output Results + Profiling  ==============
+
 		std::cout << "\nProgram Execution Completed!\n" << endl;
 
 		std::cout << GetFullProfilingInfo(profiling_event, ProfilingResolution::PROF_US) << endl;
 		std::cout << "Workgroup Size: " << local_size << endl << endl;
 
-		std::cout << "Sum = " << sum << endl;
-		std::cout << "Average = " << avg << endl;
-		std::cout << "Time to finish: " << profiling_event.getProfilingInfo<CL_PROFILING_COMMAND_END>() - profiling_event.getProfilingInfo<CL_PROFILING_COMMAND_START>() << " ns \n" << endl;;
-
-		std::cout << "Min = " << min_value << endl;
-		std::cout << "Time to finish: " << profiling_min.getProfilingInfo<CL_PROFILING_COMMAND_END>() - profiling_min.getProfilingInfo<CL_PROFILING_COMMAND_START>() << " ns \n" << endl;;
-
-		std::cout << "Max = " << max_value << endl;
-		std::cout << "Time to finish: " << profiling_max.getProfilingInfo<CL_PROFILING_COMMAND_END>() - profiling_max.getProfilingInfo<CL_PROFILING_COMMAND_START>() << " ns \n" << endl;;
-
-		std::cout << "Median = " << (float)B_sort[(0.50 * B_sort.size())] / 10 << endl;
+		std::cout << "********************* Results *********************" << endl;
+		std::cout << "Sum		= " << sum << endl;
+		std::cout << "Average		= " << avg << endl;
+		std::cout << "Min		= " << min_value << endl;
+		std::cout << "Max		= " << max_value << endl;
+		std::cout << "Median		= " << (float)B_sort[(0.50 * B_sort.size())] / 10 << endl;
 		std::cout << "25th Percentile = " << (float)B_sort[(0.25 * B_sort.size())] / 10 << endl;
 		std::cout << "75th Percentile = " << (float)B_sort[(0.75 * B_sort.size())] / 10 << endl;
-		std::cout << "Time to finish: " << profiling_sort.getProfilingInfo<CL_PROFILING_COMMAND_END>() - profiling_sort.getProfilingInfo<CL_PROFILING_COMMAND_START>() << " ns \n" << endl;
-
-		std::cout << "Std Deviation = " << std_dev << endl;
-
+		std::cout << "Std Deviation   = " << std_dev << endl << endl;
+		
+		std::cout << "********************* Profiling *********************" << endl;
+		std::cout << "Average finish:	" << profiling_event.getProfilingInfo<CL_PROFILING_COMMAND_END>() - profiling_event.getProfilingInfo<CL_PROFILING_COMMAND_START>() << " ns" << endl;
+		std::cout << "Min finish:	" << profiling_min.getProfilingInfo<CL_PROFILING_COMMAND_END>() - profiling_min.getProfilingInfo<CL_PROFILING_COMMAND_START>() << " ns" << endl;
+		std::cout << "Max finish:	" << profiling_max.getProfilingInfo<CL_PROFILING_COMMAND_END>() - profiling_max.getProfilingInfo<CL_PROFILING_COMMAND_START>() << " ns" << endl;	
+		std::cout << "Median finish:	" << profiling_sort.getProfilingInfo<CL_PROFILING_COMMAND_END>() - profiling_sort.getProfilingInfo<CL_PROFILING_COMMAND_START>() << " ns (includes Sort)" << endl << endl;
 
 		std::cout << "Total Program Execution Time: " << profiling_max.getProfilingInfo<CL_PROFILING_COMMAND_END>() - profiling_event.getProfilingInfo<CL_PROFILING_COMMAND_START>() << " ns \n" << endl;
+	
 	}
 	catch (cl::Error err) {
 		std::cerr << "ERROR: " << err.what() << ", " << getErrorString(err.err()) << std::endl;

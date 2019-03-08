@@ -120,7 +120,6 @@ kernel void sort(global const int* A, global int* B, local int* scratch)
 
 	// Output index position
 	int pos = 0;
-
 	for (int i = 0; i < N ; i += wg)
 	{
 		barrier(CLK_LOCAL_MEM_FENCE);
@@ -142,6 +141,44 @@ kernel void sort(global const int* A, global int* B, local int* scratch)
 	}
 
 	B[pos] = iKey;
+
+}
+
+kernel void sort_mine(global const int* A, global int* B, local int* scratch)
+{
+	int id = get_global_id(0);      // Global ID
+	int N = get_global_size(0);     // Input size
+
+	//up-sweep
+	for (int stride = 1; stride < N; stride *= 2) {
+		if (((id + 1) % (stride * 2)) == 0)
+		{
+			if (A[id - stride] > A[id])
+			{
+				scratch[id] = A[id - stride];
+				scratch[id - stride] = A[id];
+			}
+		}
+
+		barrier(CLK_GLOBAL_MEM_FENCE); //sync the step
+	}
+
+	barrier(CLK_GLOBAL_MEM_FENCE); //sync the step
+
+	for (int stride = N / 2; stride > 0; stride /= 2) {
+		if (((id + 1) % (stride * 2)) == 0) 
+		{
+			if (A[id - stride] > A[id])
+			{
+				scratch[id] = A[id - stride];
+				scratch[id - stride] = A[id];
+			}
+		}
+
+		barrier(CLK_GLOBAL_MEM_FENCE); //sync the step
+	}
+
+	B[id] = scratch[id];
 
 }
 
