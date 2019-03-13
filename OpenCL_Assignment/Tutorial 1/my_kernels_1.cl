@@ -144,43 +144,83 @@ kernel void sort(global const int* A, global int* B, local int* scratch)
 
 }
 
-kernel void sort_mine(global const int* A, global int* B, local int* scratch)
+// Compares value A with B and exchanges if unordered
+void cmpxchg(global int* A, global int* B) 
 {
-	int id = get_global_id(0);      // Global ID
-	int N = get_global_size(0);     // Input size
-
-	//up-sweep
-	for (int stride = 1; stride < N; stride *= 2) {
-		if (((id + 1) % (stride * 2)) == 0)
-		{
-			if (A[id - stride] > A[id])
-			{
-				scratch[id] = A[id - stride];
-				scratch[id - stride] = A[id];
-			}
-		}
-
-		barrier(CLK_GLOBAL_MEM_FENCE); //sync the step
+	
+	if (*A > *B) {
+		// Swap
+		int t = *A; 
+		*A = *B; 
+		*B = t;
 	}
-
-	barrier(CLK_GLOBAL_MEM_FENCE); //sync the step
-
-	for (int stride = N / 2; stride > 0; stride /= 2) {
-		if (((id + 1) % (stride * 2)) == 0) 
-		{
-			if (A[id - stride] > A[id])
-			{
-				scratch[id] = A[id - stride];
-				scratch[id - stride] = A[id];
-			}
-		}
-
-		barrier(CLK_GLOBAL_MEM_FENCE); //sync the step
-	}
-
-	B[id] = scratch[id];
 
 }
+
+// Checks each element is ordered in Odd/Even rotation
+kernel void sort_oddeven(global int* A) 
+{
+	int id = get_global_id(0); 
+	int N = get_global_size(0);
+
+	for (int i = 0; i < N; i += 2)
+	{
+		if (id % 2 == 1 && id + 1 < N)	// Odd Step
+			cmpxchg(&A[id], &A[id + 1]);
+
+		if (id % 2 == 0 && id + 1 < N)	// Even Step
+			cmpxchg(&A[id], &A[id + 1]);
+	}
+}
+
+/*  BITONIC SORT
+
+// Compares value A with B and exchanges in Ascend/Descend rotation
+void cmpxchg(global int* A, global int* B, bool dir) 
+{
+	if ((!dir && *A > *B) || (dir && *A < *B)) {
+		int t = *A;
+		*A = *B;
+		*B = t;
+	}
+}
+
+// Merge Bitonic sequences
+void bitonic_merge(int id, global int* A, int N, bool dir)
+{
+	// Split into bitonic sequences each iteration
+	for (int i = N/2; i > 0; i /= 2)
+	{
+
+		if ((id % (id * 2)) < i)
+			cmpxchg(&A[id], &A[id + 1], dir);
+
+		barrier(CLK_GLOBAL_MEM_FENCE);
+	}
+}
+
+// Conducts Sorting algorithm via Bitonic Sort
+kernel void bitonic_sort(global int* A)
+{
+	int id = get_global_id(0);
+	int N = get_global_size(0);
+
+	for (int i = 1; i < N / 2; i *= 2)
+	{
+		if (id % (i * 4) < i * 2)
+			bitonic_merge(id, A, i * 2, false);	// Bitonic Ascending
+
+		else if ((id + i * 2) % (i * 4) < i * 2)
+			bitonic_merge(id, A, i * 2, true);	// Bitonic Descending
+
+		barrier(CLK_GLOBAL_MEM_FENCE);
+	}
+	if (id == 0)
+		bitonic_merge(id, A, N, false);			// Final Merge
+
+}
+
+*/
 
 // Returns Vector containing Standard Deviation of the input set (A)
 kernel void std_dev(global const int* A, global int* B, global const int* sum, local int* scratch)

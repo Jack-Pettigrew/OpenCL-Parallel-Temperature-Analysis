@@ -33,7 +33,7 @@ int main(int argc, char **argv) {
 		else if (strcmp(argv[i], "-h") == 0) { print_help(); }
 	}
 
-	//detect any potential exceptions
+	// Detect any potential exceptions
 	try {
 		//Part 2 - host operations
 		//2.1 Select computing devices
