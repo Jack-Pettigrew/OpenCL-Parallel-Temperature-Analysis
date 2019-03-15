@@ -40,6 +40,34 @@ kernel void reduce_sum(global const int* A, global int* B, local int* scratch)
 	}
 }
 
+kernel void reduce_sum_float(global const float* A, global float* B, local float* scratch)
+{
+	int id = get_global_id(0);			// Global Element Workgroup ID
+	int local_id = get_local_id(0);		// Local Element Workgroup ID
+	int N = get_local_size(0);			// Size of Local Workgroup
+	int g_id = get_group_id(0);
+
+	// Part 1: Store into local memory
+	scratch[local_id] = A[id];
+
+	// Wait for Global to Local memory complete
+	barrier(CLK_LOCAL_MEM_FENCE);
+
+	for (int stride = N / 2; stride > 0; stride /= 2) {
+
+		if (local_id < stride)
+			scratch[local_id] += scratch[local_id + stride];
+
+		barrier(CLK_LOCAL_MEM_FENCE);
+	}
+	// Part 3: Add each Thread result together via Atomic_Add into Output Vector
+	if (!local_id) {
+
+		B[g_id] = scratch[local_id];
+
+	}
+}
+
 // Reduce Min value given in vector A outputted in vector B via local memory vector Scratch
 kernel void reduce_min(global const int* A, global int* B, local int* scratch)
 {
@@ -70,6 +98,35 @@ kernel void reduce_min(global const int* A, global int* B, local int* scratch)
 	// Part 3: Atomic_Min
 	if (!local_id) {
 		atomic_min(&B[0], scratch[local_id]);
+	}
+}
+
+kernel void reduce_min_float(global const float* A, global float* B, local float* scratch)
+{
+	int id = get_global_id(0);			// Global Element Workgroup ID
+	int local_id = get_local_id(0);		// Local Element Workgroup ID
+	int N = get_local_size(0);			// Size of Local Workgroup
+	int g_id = get_group_id(0);
+
+	// Part 1: Store into local memory
+	scratch[local_id] = A[id];
+
+	// Wait for Global to Local memory complete
+	barrier(CLK_LOCAL_MEM_FENCE);
+
+	for (int stride = N / 2; stride > 0; stride /= 2) {
+
+		if (local_id < stride)
+			if (scratch[local_id + stride] < scratch[local_id])
+				scratch[local_id] = scratch[local_id + stride];
+
+		barrier(CLK_LOCAL_MEM_FENCE);
+	}
+	// Part 3: Add each Thread result together via Atomic_Add into Output Vector
+	if (!local_id) {
+
+		B[g_id] = scratch[local_id];
+
 	}
 }
 

@@ -99,7 +99,7 @@ int main(int argc, char **argv)
 
 #pragma endregion
 
-		typedef int myType;
+		typedef float myType;
 
 		// ==============  Read temperature file into String Vector  ==============
 
@@ -131,7 +131,6 @@ int main(int argc, char **argv)
 		for (int i = 5; i < temperatureInfo.size(); i += 6)
 		{
 			float temp = strtof(temperatureInfo[i].c_str(), 0);
-			temp *= 10;
 			temperatureValues.push_back(temp);
 		}
 
@@ -200,21 +199,86 @@ int main(int argc, char **argv)
 		queue.enqueueFillBuffer(buffer_B_sort, 0, 0, output_size);
 		queue.enqueueFillBuffer(buffer_B_std, 0, 0, output_size);
 
+
+		// ============== Sum ==============
+
 		// Create Kernel call + Set Args
-		cl::Kernel kernel_sum = cl::Kernel(program, "reduce_sum");
+		cl::Event profiling_event;
+
+		cl::Kernel kernel_sum = cl::Kernel(program, "reduce_sum_float");
 		kernel_sum.setArg(0, buffer_temperatures);
 		kernel_sum.setArg(1, buffer_B_sum);
 		kernel_sum.setArg(2, cl::Local(local_size * sizeof(myType)));	// Local Workgroup memory size
+		
+		// Queue Kernel calls + Get Results from OpenCL devices (w/ profiling events)
+		queue.enqueueNDRangeKernel(kernel_sum, cl::NullRange, cl::NDRange(input_elements), cl::NDRange(local_size), NULL, &profiling_event);
+		queue.enqueueReadBuffer(buffer_B_sum, CL_TRUE, 0, output_size, &B_sum[0]);
 
-		cl::Kernel kernel_min = cl::Kernel(program, "reduce_min");
+		/// Float based reduction kernel
+		/// Requires recursion-esk kernel calls for 'manual' reduction sum
+		while (B_sum[local_size] != 0.0f)
+		{
+
+			// Create Kernel call + Set Args
+			kernel_sum.setArg(0, buffer_B_sum);
+			kernel_sum.setArg(1, buffer_B_sum);
+			kernel_sum.setArg(2, cl::Local(local_size * sizeof(myType)));
+			queue.enqueueNDRangeKernel(kernel_sum, cl::NullRange, cl::NDRange(input_elements), cl::NDRange(local_size), NULL, &profiling_event);
+			queue.enqueueReadBuffer(buffer_B_sum, CL_TRUE, 0, output_size, &B_sum[0]);
+
+		}
+
+		kernel_sum.setArg(0, buffer_B_sum);
+		kernel_sum.setArg(1, buffer_B_sum);
+		kernel_sum.setArg(2, cl::Local(local_size * sizeof(myType)));
+		queue.enqueueNDRangeKernel(kernel_sum, cl::NullRange, cl::NDRange(input_elements), cl::NDRange(local_size), NULL, &profiling_event);
+		queue.enqueueReadBuffer(buffer_B_sum, CL_TRUE, 0, output_size, &B_sum[0]);
+
+		//cout << B_sum;
+
+
+		// ============== Min Value ==============
+		cl::Event profiling_min;
+
+		cl::Kernel kernel_min = cl::Kernel(program, "reduce_min_float");
 		kernel_min.setArg(0, buffer_temperatures);
 		kernel_min.setArg(1, buffer_B_min);
 		kernel_min.setArg(2, cl::Local(local_size * sizeof(myType)));
+
+		queue.enqueueNDRangeKernel(kernel_min, cl::NullRange, cl::NDRange(input_elements), cl::NDRange(local_size), NULL, &profiling_min);
+		queue.enqueueReadBuffer(buffer_B_min, CL_TRUE, 0, output_size, &B_min[0]);
+
+		while (B_min[local_size] != 0.0f)
+		{
+			kernel_min.setArg(0, buffer_B_min);
+			kernel_min.setArg(1, buffer_B_min);
+			kernel_min.setArg(2, cl::Local(local_size * sizeof(myType)));
+			queue.enqueueNDRangeKernel(kernel_min, cl::NullRange, cl::NDRange(input_elements), cl::NDRange(local_size), NULL, &profiling_min);
+			queue.enqueueReadBuffer(buffer_B_min, CL_TRUE, 0, output_size, &B_min[0]);
+		}
+
+		kernel_min.setArg(0, buffer_B_min);
+		kernel_min.setArg(1, buffer_B_min);
+		kernel_min.setArg(2, cl::Local(local_size * sizeof(myType)));
+		queue.enqueueNDRangeKernel(kernel_min, cl::NullRange, cl::NDRange(input_elements), cl::NDRange(local_size), NULL, &profiling_min);
+		queue.enqueueReadBuffer(buffer_B_min, CL_TRUE, 0, output_size, &B_min[0]);
+
+
+		// ============== Max Value ==============
+		cl::Event profiling_max;
 
 		cl::Kernel kernel_max = cl::Kernel(program, "reduce_max");
 		kernel_max.setArg(0, buffer_temperatures);
 		kernel_max.setArg(1, buffer_B_max);
 		kernel_max.setArg(2, cl::Local(local_size * sizeof(myType)));
+
+		queue.enqueueNDRangeKernel(kernel_max, cl::NullRange, cl::NDRange(input_elements), cl::NDRange(local_size), NULL, &profiling_max);
+		queue.enqueueReadBuffer(buffer_B_max, CL_TRUE, 0, output_size, &B_max[0]);
+
+
+		// ============== STD Deviation ==============
+
+		cl::Event profiling_std;
 
 		cl::Kernel kernel_std = cl::Kernel(program, "std_dev");
 		kernel_std.setArg(0, buffer_temperatures);
@@ -222,42 +286,31 @@ int main(int argc, char **argv)
 		kernel_std.setArg(2, buffer_B_sum);
 		kernel_std.setArg(3, cl::Local(local_size * sizeof(myType)));
 
+		queue.enqueueNDRangeKernel(kernel_std, cl::NullRange, cl::NDRange(input_elements), cl::NDRange(local_size), NULL, &profiling_std);
+		queue.enqueueReadBuffer(buffer_B_std, CL_TRUE, 0, output_size, &B_std[0]);
+
+
+		// ============== Sorted Vector ==============
+		cl::Event profiling_sort;
+
 		cl::Kernel kernel_sort = cl::Kernel(program, "sort_oddeven");
 		kernel_sort.setArg(0, buffer_temperatures);
 		/*kernel_sort.setArg(1, buffer_B_sort);
 		kernel_sort.setArg(2, cl::Local(local_size * sizeof(myType)));*/
 
-		// Create profiling Events
-		cl::Event profiling_event;
-		cl::Event profiling_min;
-		cl::Event profiling_max;
-		cl::Event profiling_sort;
-		cl::Event profiling_std;
-
-		// Queue Kernel calls + Get Results from OpenCL devices (w/ profiling events)
-		queue.enqueueNDRangeKernel(kernel_sum, cl::NullRange, cl::NDRange(input_elements), cl::NDRange(local_size), NULL, &profiling_event);
-		queue.enqueueReadBuffer(buffer_B_sum, CL_TRUE, 0, output_size, &B_sum[0]);
-
-		queue.enqueueNDRangeKernel(kernel_min, cl::NullRange, cl::NDRange(input_elements), cl::NDRange(local_size), NULL, &profiling_min);
-		queue.enqueueReadBuffer(buffer_B_min, CL_TRUE, 0, output_size, &B_min[0]);
-
-		queue.enqueueNDRangeKernel(kernel_max, cl::NullRange, cl::NDRange(input_elements), cl::NDRange(local_size), NULL, &profiling_max);
-		queue.enqueueReadBuffer(buffer_B_max, CL_TRUE, 0, output_size, &B_max[0]);
-
-		queue.enqueueNDRangeKernel(kernel_std, cl::NullRange, cl::NDRange(input_elements), cl::NDRange(local_size), NULL, &profiling_std);
-		queue.enqueueReadBuffer(buffer_B_std, CL_TRUE, 0, output_size, &B_std[0]);
-
 		queue.enqueueNDRangeKernel(kernel_sort, cl::NullRange, cl::NDRange(input_elements), cl::NDRange(local_size), NULL, &profiling_sort);
 		//queue.enqueueReadBuffer(buffer_B_sort, CL_TRUE, 0, output_size, &B_sort[0]);
 		queue.enqueueReadBuffer(buffer_temperatures, CL_TRUE, 0, output_size, &temperatureValues[0]);
 
-		// Get result from first element of each Vector
-		float sum = B_sum[0] / 10;
+
+		// ============== Format Results ==============
+		float sum = B_sum[0];
 		float avg = sum / numOfElements;
-		float min_value = (float)B_min[0] / 10.0f;
-		float max_value = (float)B_max[0] / 10.0f;
-		float variance = (B_std[0] / B_std.size()) / 10.0f;
+		float min_value = (float)B_min[0];
+		float max_value = (float)B_max[0];
+		float variance = (B_std[0] / B_std.size());
 		float std_dev = sqrt(variance);
+
 
 		// ==============  Output Results + Profiling  ==============
 
@@ -288,7 +341,7 @@ int main(int argc, char **argv)
 		std::cout << "25th Percentile = " << (float)temperatureValues[(0.25 * temperatureValues.size())] / 10 << endl;
 		std::cout << "75th Percentile = " << (float)temperatureValues[(0.75 * temperatureValues.size())] / 10 << endl;
 
-		cout << temperatureValues;
+		//cout << temperatureValues;
 
 	}
 	catch (cl::Error err) {
