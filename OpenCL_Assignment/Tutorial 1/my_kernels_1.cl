@@ -45,7 +45,7 @@ kernel void reduce_sum_float(global const float* A, global float* B, local float
 	int id = get_global_id(0);			// Global Element Workgroup ID
 	int local_id = get_local_id(0);		// Local Element Workgroup ID
 	int N = get_local_size(0);			// Size of Local Workgroup
-	int g_id = get_group_id(0);
+	int g_id = get_group_id(0);			// Workgroup ID
 
 	// Part 1: Store into local memory
 	scratch[local_id] = A[id];
@@ -199,13 +199,13 @@ kernel void reduce_max_float(global const float* A, global float* B, local float
 
 	As referenced by Eric Bainville: http://www.bealto.com/gpu-sorting_parallel-selection.html
 */
-kernel void sort(global const int* A, global int* B, local int* scratch)
+kernel void sort(global const float* A, global float* B, local float* scratch)
 {
 	int id = get_global_id(0);      // Global ID
 	int local_id = get_local_id(0);	// Local ID
 	int N = get_global_size(0);     // Input size
 	int wg = get_local_size(0);     // Workgroup size
-	int iKey = A[id];				// Input key for current thread
+	float iKey = A[id];				// Input key for current thread
 
 	// Output index position
 	int pos = 0;
@@ -223,7 +223,7 @@ kernel void sort(global const int* A, global int* B, local int* scratch)
 		// Loop on all values in Scratch
 		for (int index = 0; index < wg; index++)
 		{
-			int jKey = scratch[index];
+			float jKey = scratch[index];
 			bool smaller = (jKey < iKey) || (jKey == iKey && (i + index) < id); // in[j] < in[i] ?
 			pos += (smaller) ? 1 : 0;
 		}
@@ -233,6 +233,7 @@ kernel void sort(global const int* A, global int* B, local int* scratch)
 
 }
 
+// LECTURE SORT ATTEMPT
 //// Compares value A with B and exchanges if unordered
 //void cmpxchg(global int* A, global int* B) 
 //{
@@ -262,7 +263,7 @@ kernel void sort(global const int* A, global int* B, local int* scratch)
 //	}
 //}
 
-/*  BITONIC SORT
+/*  BITONIC SORT ATTEMPT
 
 // Compares value A with B and exchanges in Ascend/Descend rotation
 void cmpxchg(global int* A, global int* B, bool dir) 
@@ -345,3 +346,39 @@ kernel void std_dev(global const int* A, global int* B, global const int* sum, l
 		atomic_add(&B[0], scratch[local_id]);
 
 }
+
+kernel void std_dev_float(global const float* A, global float* B, global const float* sum, local float* scratch)
+{
+	int id = get_global_id(0);
+	int local_id = get_local_id(0);
+	int N = get_local_size(0);
+	int g_id = get_group_id(0);
+
+	// Calculate Mean (A = Sum Output)
+	float avg = sum[0] / get_global_size(0);
+
+	// Copy the square of each distance to the Mean into Local_Mem
+	scratch[local_id] = ((A[id] - avg) * (A[id] - avg));
+
+
+	// Sync
+	barrier(CLK_LOCAL_MEM_FENCE);
+
+
+	// Reduce Addition all differences
+	for (int i = 1; i < N; i *= 2)
+	{
+		if (!(local_id % (i * 2)) && ((local_id + i) < N))
+		{
+			scratch[local_id] += scratch[local_id + i];
+		}
+
+		barrier(CLK_LOCAL_MEM_FENCE);
+	}
+
+	// Atomically Add all Workgroup Local Additions
+	if (!local_id)
+		B[g_id] = scratch[local_id];
+
+}
+

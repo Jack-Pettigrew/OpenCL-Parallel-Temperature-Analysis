@@ -32,6 +32,7 @@
     <ProjectGuid>{8CB4B79A-8170-44DE-88DC-C73EACB44CB2}</ProjectGuid>
     <RootNamespace>Tutorial 1</RootNamespace>
     <WindowsTargetPlatformVersion>8.1</WindowsTargetPlatformVersion>
+    <ProjectName>Integer Kernels</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">

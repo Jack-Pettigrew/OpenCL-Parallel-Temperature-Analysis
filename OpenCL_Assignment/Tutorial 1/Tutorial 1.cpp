@@ -49,7 +49,7 @@ void print_help() {
 int main(int argc, char **argv) 
 {
 
-	//Part 1 - handle command line options such as device selection, verbosity, etc.
+	// Part 1 - handle command line options such as device selection, verbosity, etc.
 	int platform_id = 0;
 	int device_id = 0;
 
@@ -62,6 +62,7 @@ int main(int argc, char **argv)
 
 	// Try loop entire Parallel Code for Errors
 	try {
+
 
 		// OpenCL Init procedure
 #pragma region Setup
@@ -99,24 +100,32 @@ int main(int argc, char **argv)
 
 #pragma endregion
 
+		// Value Types
 		typedef float myType;
+
 
 		// ==============  Read temperature file into String Vector  ==============
 
-		std::vector<string> temperatureInfo;	// Holds file text
-		std::vector<myType> temperatureValues;	// Holds all Temperature Floats
+		std::vector<string> temperatureInfo;	/// Holds file text
+		std::vector<myType> temperatureValues;	/// Holds all Temperature Floats
 
-		// fstream variables
+		// File reading variables
 		ifstream file;
 		string fileDir, word;
 
 		// Directory of Temperature Files
-		fileDir = "..\\..\\temp_lincolnshire_short.txt";
+		/// Relative Pathing
+		//fileDir = "..\\..\\temp_lincolnshire_short.txt";
 		//fileDir = "..\\..\\temp_lincolnshire.txt";
+
+		/// Aboslute Pathing
+		//fileDir = "C:\\Users\\Student\\Desktop\\OpenCL-Assignment\\OpenCL_Assignment\\temp_lincolnshire_short.txt";
+		fileDir = "C:\\Users\\Student\\Desktop\\OpenCL-Assignment\\OpenCL_Assignment\\temp_lincolnshire.txt";
+
 		file.open(fileDir);
 
 		if (!file.is_open())
-			cout << "\nFile was not found!" << endl;
+			cout << "\nTemperature file was not found!" << endl;
 
 
 
@@ -207,22 +216,24 @@ int main(int argc, char **argv)
 
 
 		// ============== Sum FLOATS ==============
+		/// Returns the sum of all values in the first element of the vector
 
-		// Create Kernel call + Set Args
+		// Create Profiling Event (kernel information)
 		cl::Event profiling_event;
 
+		// Create Kernel call and set arguements
 		cl::Kernel kernel_sum = cl::Kernel(program, "reduce_sum_float");
-		kernel_sum.setArg(0, buffer_temperatures);
-		kernel_sum.setArg(1, buffer_B_sum);
-		kernel_sum.setArg(2, cl::Local(local_size * sizeof(myType)));	// Local Workgroup memory size
+		kernel_sum.setArg(0, buffer_temperatures);							/// Input Vector Read Buffer
+		kernel_sum.setArg(1, buffer_B_sum);									/// Output Vector Write Buffer
+		kernel_sum.setArg(2, cl::Local(local_size * sizeof(myType)));		/// Local Memory size value
 		
-		// Queue Kernel calls + Get Results from OpenCL devices (w/ profiling events)
+		// Queue 
 		queue.enqueueNDRangeKernel(kernel_sum, cl::NullRange, cl::NDRange(input_elements), cl::NDRange(local_size), NULL, &profiling_event);
 		queue.enqueueReadBuffer(buffer_B_sum, CL_TRUE, 0, output_size, &B_sum[0]);
 
 		/// Float based reduction kernel
 		/// Requires recursion-esk kernel calls for 'manual' reduction sum
-		while (B_sum[local_size] != 0.0f)
+		while (B_sum[1] != 0.0f)
 		{
 
 			// Create Kernel call + Set Args
@@ -234,15 +245,12 @@ int main(int argc, char **argv)
 
 		}
 
-		kernel_sum.setArg(0, buffer_B_sum);
-		kernel_sum.setArg(1, buffer_B_sum);
-		kernel_sum.setArg(2, cl::Local(local_size * sizeof(myType)));
-		queue.enqueueNDRangeKernel(kernel_sum, cl::NullRange, cl::NDRange(input_elements), cl::NDRange(local_size), NULL, &profiling_event);
-		queue.enqueueReadBuffer(buffer_B_sum, CL_TRUE, 0, output_size, &B_sum[0]);
-
 
 
 		// ============== Min Value FLOATS ==============
+		/// Returns Max value in input vector and stores it in the first element
+
+
 		cl::Event profiling_min;
 
 		cl::Kernel kernel_min = cl::Kernel(program, "reduce_min_float");
@@ -253,7 +261,7 @@ int main(int argc, char **argv)
 		queue.enqueueNDRangeKernel(kernel_min, cl::NullRange, cl::NDRange(input_elements), cl::NDRange(local_size), NULL, &profiling_min);
 		queue.enqueueReadBuffer(buffer_B_min, CL_TRUE, 0, output_size, &B_min[0]);
 
-		while (B_min[local_size] != 0.0f)
+		while (B_min[1] != 0.0f)
 		{
 			kernel_min.setArg(0, buffer_B_min);
 			kernel_min.setArg(1, buffer_B_min);
@@ -262,15 +270,11 @@ int main(int argc, char **argv)
 			queue.enqueueReadBuffer(buffer_B_min, CL_TRUE, 0, output_size, &B_min[0]);
 		}
 
-		kernel_min.setArg(0, buffer_B_min);
-		kernel_min.setArg(1, buffer_B_min);
-		kernel_min.setArg(2, cl::Local(local_size * sizeof(myType)));
-		queue.enqueueNDRangeKernel(kernel_min, cl::NullRange, cl::NDRange(input_elements), cl::NDRange(local_size), NULL, &profiling_min);
-		queue.enqueueReadBuffer(buffer_B_min, CL_TRUE, 0, output_size, &B_min[0]);
-
 
 
 		// ============== Max Value FLOATS ==============
+		/// Returns Max value in input vector and stores it in the first element
+
 		cl::Event profiling_max;
 
 		cl::Kernel kernel_max = cl::Kernel(program, "reduce_max_float");
@@ -281,7 +285,7 @@ int main(int argc, char **argv)
 		queue.enqueueNDRangeKernel(kernel_max, cl::NullRange, cl::NDRange(input_elements), cl::NDRange(local_size), NULL, &profiling_max);
 		queue.enqueueReadBuffer(buffer_B_max, CL_TRUE, 0, output_size, &B_max[0]);
 
-		while (B_max[local_size] != 0.0f)
+		while (B_max[1] != 0.0f)
 		{
 			kernel_max.setArg(0, buffer_B_max);
 			kernel_max.setArg(1, buffer_B_max);
@@ -290,19 +294,14 @@ int main(int argc, char **argv)
 			queue.enqueueReadBuffer(buffer_B_max, CL_TRUE, 0, output_size, &B_max[0]);
 		}
 
-		kernel_max.setArg(0, buffer_B_max);
-		kernel_max.setArg(1, buffer_B_max);
-		kernel_max.setArg(2, cl::Local(local_size * sizeof(myType)));
-		queue.enqueueNDRangeKernel(kernel_max, cl::NullRange, cl::NDRange(input_elements), cl::NDRange(local_size), NULL, &profiling_max);
-		queue.enqueueReadBuffer(buffer_B_max, CL_TRUE, 0, output_size, &B_max[0]);
-
 
 
 		// ============== STD Deviation ==============
+		/// Calculates the first steps of Standard Deviation
 
 		cl::Event profiling_std;
 
-		cl::Kernel kernel_std = cl::Kernel(program, "std_dev");
+		cl::Kernel kernel_std = cl::Kernel(program, "std_dev_float");
 		kernel_std.setArg(0, buffer_temperatures);
 		kernel_std.setArg(1, buffer_B_std);
 		kernel_std.setArg(2, buffer_B_sum);
@@ -312,8 +311,22 @@ int main(int argc, char **argv)
 		queue.enqueueReadBuffer(buffer_B_std, CL_TRUE, 0, output_size, &B_std[0]);
 
 
+		while (B_std[1] != 0.0f)
+		{
+
+			kernel_sum.setArg(0, buffer_B_std);
+			kernel_sum.setArg(1, buffer_B_std);
+			kernel_sum.setArg(2, cl::Local(local_size * sizeof(myType)));
+			queue.enqueueNDRangeKernel(kernel_sum, cl::NullRange, cl::NDRange(input_elements), cl::NDRange(local_size), NULL, &profiling_std);
+			queue.enqueueReadBuffer(buffer_B_std, CL_TRUE, 0, output_size, &B_std[0]);
+
+		}
+
+		
 
 		// ============== Sorted Vector ==============
+		/// Sort input vector and return sorted output
+
 		cl::Event profiling_sort;
 
 		cl::Kernel kernel_sort = cl::Kernel(program, "sort");
@@ -326,13 +339,18 @@ int main(int argc, char **argv)
 		///queue.enqueueReadBuffer(buffer_temperatures, CL_TRUE, 0, output_size, &temperatureValues[0]);
 
 
+
 		// ============== Format Results ==============
-		float sum = B_sum[0];
-		float avg = sum / numOfElements;
+		float sum		= B_sum[0];
+		float avg		= sum / numOfElements;
 		float min_value = (float)B_min[0];
 		float max_value = (float)B_max[0];
-		float variance = (B_std[0] / B_std.size());
-		float std_dev = sqrt(variance);
+		float variance	= (B_std[0] / B_std.size());
+		float std_dev	= sqrt(variance);
+		float median	= (float)B_sort[(0.50 * B_sort.size())];
+		float median25	= (float)B_sort[(0.25 * B_sort.size())];
+		float median75	= (float)B_sort[(0.75 * B_sort.size())];
+		
 
 
 		// ==============  Output Results + Profiling  ==============
@@ -343,33 +361,31 @@ int main(int argc, char **argv)
 		std::cout << "Workgroup Size: " << local_size << endl << endl;
 
 		std::cout << "********************* Results *********************" << endl;
-		std::cout << "Sum		= " << sum << endl;
-		std::cout << "Average		= " << avg << endl;
-		std::cout << "Min		= " << min_value << endl;
-		std::cout << "Max		= " << max_value << endl;
-		std::cout << "Median		= " << (float)B_sort[(0.50 * B_sort.size())] / 10 << endl;
-		std::cout << "25th Percentile = " << (float)B_sort[(0.25 * B_sort.size())] / 10 << endl;
-		std::cout << "75th Percentile = " << (float)B_sort[(0.75 * B_sort.size())] / 10 << endl;
-		std::cout << "Std Deviation   = " << std_dev << endl << endl;
+		std::cout << "Sum		= "			<< sum << endl;
+		std::cout << "Average		= "		<< avg << endl;
+		std::cout << "Min		= "			<< min_value << endl;
+		std::cout << "Max		= "			<< max_value << endl;
+		std::cout << "Std Deviation   = "	<< std_dev << endl << endl;
+		std::cout << "Median		= "		<< median << endl;
+		std::cout << "25th Percentile = "	<< median25 << endl;
+		std::cout << "75th Percentile = "	<< median75 << endl << endl;
 
 		std::cout << "********************* Profiling *********************" << endl;
-		std::cout << "Average finish:	" << profiling_event.getProfilingInfo<CL_PROFILING_COMMAND_END>() - profiling_event.getProfilingInfo<CL_PROFILING_COMMAND_START>() << " ns" << endl;
-		std::cout << "Min finish:	" << profiling_min.getProfilingInfo<CL_PROFILING_COMMAND_END>() - profiling_min.getProfilingInfo<CL_PROFILING_COMMAND_START>() << " ns" << endl;
-		std::cout << "Max finish:	" << profiling_max.getProfilingInfo<CL_PROFILING_COMMAND_END>() - profiling_max.getProfilingInfo<CL_PROFILING_COMMAND_START>() << " ns" << endl;
-		std::cout << "Median finish:	" << profiling_sort.getProfilingInfo<CL_PROFILING_COMMAND_END>() - profiling_sort.getProfilingInfo<CL_PROFILING_COMMAND_START>() << " ns (includes Sort)" << endl << endl;
+		std::cout << "AVG Time:	"	<< profiling_event.getProfilingInfo<CL_PROFILING_COMMAND_END>() - profiling_event.getProfilingInfo<CL_PROFILING_COMMAND_START>() << " [ns]" << endl;
+		std::cout << "Min Time:	"	<< profiling_min.getProfilingInfo<CL_PROFILING_COMMAND_END>() - profiling_min.getProfilingInfo<CL_PROFILING_COMMAND_START>() << " [ns]" << endl;
+		std::cout << "Max Time:	"	<< profiling_max.getProfilingInfo<CL_PROFILING_COMMAND_END>() - profiling_max.getProfilingInfo<CL_PROFILING_COMMAND_START>() << " [ns]" << endl;
+		std::cout << "Std Time:	" << profiling_std.getProfilingInfo<CL_PROFILING_COMMAND_END>() - profiling_std.getProfilingInfo<CL_PROFILING_COMMAND_START>() << " [ns]" << endl << endl;
+		///std::cout << "Median finish:	"	<< profiling_sort.getProfilingInfo<CL_PROFILING_COMMAND_END>() - profiling_sort.getProfilingInfo<CL_PROFILING_COMMAND_START>() << " ns (includes Sort)" << endl << endl;
 
 		std::cout << "Total Program Execution Time: " << profiling_max.getProfilingInfo<CL_PROFILING_COMMAND_END>() - profiling_event.getProfilingInfo<CL_PROFILING_COMMAND_START>() << " ns \n" << endl;
-
-		std::cout << "Median		= " << (float)temperatureValues[(0.50 * temperatureValues.size())] / 10 << endl;
-		std::cout << "25th Percentile = " << (float)temperatureValues[(0.25 * temperatureValues.size())] / 10 << endl;
-		std::cout << "75th Percentile = " << (float)temperatureValues[(0.75 * temperatureValues.size())] / 10 << endl;
-
-		//cout << temperatureValues;
 
 	}
 	catch (cl::Error err) {
 		std::cerr << "ERROR: " << err.what() << ", " << getErrorString(err.err()) << std::endl;
 	}
+
+	// Pauses Visual Studio Debug
+	system("pause");
 
 	return 0;
 }
