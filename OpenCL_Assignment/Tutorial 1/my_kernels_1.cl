@@ -59,7 +59,8 @@ kernel void reduce_sum_float(global const float* A, global float* B, local float
 			scratch[local_id] += scratch[local_id + stride];
 
 		barrier(CLK_LOCAL_MEM_FENCE);
-	}
+	}
+
 	// Part 3: Add each Thread result together via Atomic_Add into Output Vector
 	if (!local_id) {
 
@@ -121,7 +122,8 @@ kernel void reduce_min_float(global const float* A, global float* B, local float
 				scratch[local_id] = scratch[local_id + stride];
 
 		barrier(CLK_LOCAL_MEM_FENCE);
-	}
+	}
+
 	// Part 3: Add each Thread result together via Atomic_Add into Output Vector
 	if (!local_id) {
 
@@ -163,6 +165,36 @@ kernel void reduce_max(global const int* A, global int* B, local int* scratch)
 	}
 }
 
+kernel void reduce_max_float(global const float* A, global float* B, local float* scratch)
+{
+	int id = get_global_id(0);			// Global Element Workgroup ID
+	int local_id = get_local_id(0);		// Local Element Workgroup ID
+	int N = get_local_size(0);			// Size of Local Workgroup
+	int g_id = get_group_id(0);
+
+	// Part 1: Store into local memory
+	scratch[local_id] = A[id];
+
+	// Wait for Global to Local memory complete
+	barrier(CLK_LOCAL_MEM_FENCE);
+
+	for (int stride = N / 2; stride > 0; stride /= 2) {
+
+		if (local_id < stride)
+			if (scratch[local_id + stride] > scratch[local_id])
+				scratch[local_id] = scratch[local_id + stride];
+
+		barrier(CLK_LOCAL_MEM_FENCE);
+	}
+
+	// Part 3: Add each Thread result together via Atomic_Add into Output Vector
+	if (!local_id) {
+
+		B[g_id] = scratch[local_id];
+
+	}
+}
+
 /*	Sort Input into Numerical Order
 
 	As referenced by Eric Bainville: http://www.bealto.com/gpu-sorting_parallel-selection.html
@@ -201,34 +233,34 @@ kernel void sort(global const int* A, global int* B, local int* scratch)
 
 }
 
-// Compares value A with B and exchanges if unordered
-void cmpxchg(global int* A, global int* B) 
-{
-	
-	if (*A > *B) {
-		// Swap
-		int t = *A; 
-		*A = *B; 
-		*B = t;
-	}
-
-}
-
-// Checks each element is ordered in Odd/Even rotation
-kernel void sort_oddeven(global int* A) 
-{
-	int id = get_global_id(0); 
-	int N = get_global_size(0);
-
-	for (int i = 0; i < N; i += 2)
-	{
-		if (id % 2 == 1 && id + 1 < N)	// Odd Step
-			cmpxchg(&A[id], &A[id + 1]);
-
-		if (id % 2 == 0 && id + 1 < N)	// Even Step
-			cmpxchg(&A[id], &A[id + 1]);
-	}
-}
+//// Compares value A with B and exchanges if unordered
+//void cmpxchg(global int* A, global int* B) 
+//{
+//	
+//	if (*A > *B) {
+//		// Swap
+//		int t = *A; 
+//		*A = *B; 
+//		*B = t;
+//	}
+//
+//}
+//
+//// Checks each element is ordered in Odd/Even rotation
+//kernel void sort_oddeven(global int* A) 
+//{
+//	int id = get_global_id(0); 
+//	int N = get_global_size(0);
+//
+//	for (int i = 0; i < N; i += 2)
+//	{
+//		if (id % 2 == 1 && id + 1 < N)	// Odd Step
+//			cmpxchg(&A[id], &A[id + 1]);
+//
+//		if (id % 2 == 0 && id + 1 < N)	// Even Step
+//			cmpxchg(&A[id], &A[id + 1]);
+//	}
+//}
 
 /*  BITONIC SORT
 
@@ -279,22 +311,25 @@ kernel void bitonic_sort(global int* A)
 
 */
 
-// Returns Vector containing Standard Deviation of the input set (A)
+// Returns Vector containing the Standard Deviation of the Sum input
 kernel void std_dev(global const int* A, global int* B, global const int* sum, local int* scratch)
 {
 	int id = get_global_id(0);
 	int local_id = get_local_id(0);
 	int N = get_local_size(0);
 
-	// Mean
+	// Calculate Mean (A = Sum Output)
 	int avg = sum[0] / get_global_size(0);
 
-	// Copy Input per Workgroup Item
+	// Copy the square of each distance to the Mean into Local_Mem
 	scratch[local_id] = ((A[id] - avg) * (A[id] - avg)) / 10;
 
+
+	// Sync
 	barrier(CLK_LOCAL_MEM_FENCE);
 
-	// Reduction Addition
+
+	// Reduce Addition all differences
 	for (int i = 1; i < N; i *= 2)
 	{
 		if (!(local_id % (i * 2)) && ((local_id + i) < N))
@@ -305,46 +340,8 @@ kernel void std_dev(global const int* A, global int* B, global const int* sum, l
 		barrier(CLK_LOCAL_MEM_FENCE);
 	}
 
+	// Atomically Add all Workgroup Local Additions
 	if (!local_id)
 		atomic_add(&B[0], scratch[local_id]);
-}
 
-//a simple smoothing kernel averaging values in a local window (radius 1)
-kernel void avg_filter(global const int* A, global int* B) {
-	int id = get_global_id(0);
-	B[id] = (A[id - 1] + A[id] + A[id + 1])/3;
-}
-
-//a simple 2D kernel
-kernel void add2D(global const int* A, global const int* B, global int* C) {
-	int x = get_global_id(0);
-	int y = get_global_id(1);
-	int width = get_global_size(0);
-	int height = get_global_size(1);
-	int id = x + y*width;
-
-	printf("id = %d x = %d y = %d w = %d h = %d\n", id, x, y, width, height);
-
-	C[id]= A[id]+ B[id];
-}
-
-// Min value finding Kernel
-kernel void reduce_minValue(global float* A, global float* B)
-{
-	int id = get_global_id(0);	// Current Workgroup ID
-	int N = get_local_size(0);  // Number of local item in current Workgroup
-
-	B[id] = A[id];
-
-	barrier(CLK_GLOBAL_MEM_FENCE);
-	
-	for (int stride = 1; stride < N; stride *= 2)
-	{
-		if ((id % (stride * 2)) == 0 && (id + 1) < N)
-		{
-			B[id] = ((B[id] > B[id + stride]) ? B[id] : B[id + stride]);
-		}
-			
-		barrier(CLK_GLOBAL_MEM_FENCE);
-	}
 }

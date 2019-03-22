@@ -60,7 +60,7 @@ int main(int argc, char **argv)
 		else if (strcmp(argv[i], "-h") == 0) { print_help(); return 0;}
 	}
 
-	// Detect any potential exceptions
+	// Try loop entire Parallel Code for Errors
 	try {
 
 		// OpenCL Init procedure
@@ -119,6 +119,7 @@ int main(int argc, char **argv)
 			cout << "\nFile was not found!" << endl;
 
 
+
 		// ==============  Extract Floats from String Vector  ==============
 
 		// Read fileDir for raw input
@@ -135,6 +136,7 @@ int main(int argc, char **argv)
 		}
 
 		int numOfElements = temperatureValues.size();
+
 
 
 		// ==============  Memory Allocation  ==============
@@ -160,6 +162,7 @@ int main(int argc, char **argv)
 		size_t nr_group = input_elements / local_size;						// total number of workgroups to occur
 
 
+
 		// ==============  Host Output Vector ==============
 
 		// Returned values info
@@ -171,6 +174,7 @@ int main(int argc, char **argv)
 
 		// Resulting Vector Size
 		size_t output_size = B_sum.size() * sizeof(myType);
+
 
 
 		// ==============  Device Buffers  ==============
@@ -187,12 +191,13 @@ int main(int argc, char **argv)
 		cl::Buffer buffer_B_std(context, CL_MEM_READ_WRITE, output_size);
 
 
+
 		// ==============  Device Operations  ==============
 
-		// Copy vector to device memory
+		// Create device input temperature vector Buffer
 		queue.enqueueWriteBuffer(buffer_temperatures, CL_TRUE, 0, input_size, &temperatureValues[0]);
 
-		// Initialise output buffers to device memeory
+		// Create device output vector Buffer for each test case
 		queue.enqueueFillBuffer(buffer_B_sum, 0, 0, output_size);
 		queue.enqueueFillBuffer(buffer_B_min, 0, 0, output_size);
 		queue.enqueueFillBuffer(buffer_B_max, 0, 0, output_size);
@@ -200,7 +205,8 @@ int main(int argc, char **argv)
 		queue.enqueueFillBuffer(buffer_B_std, 0, 0, output_size);
 
 
-		// ============== Sum ==============
+
+		// ============== Sum FLOATS ==============
 
 		// Create Kernel call + Set Args
 		cl::Event profiling_event;
@@ -234,10 +240,9 @@ int main(int argc, char **argv)
 		queue.enqueueNDRangeKernel(kernel_sum, cl::NullRange, cl::NDRange(input_elements), cl::NDRange(local_size), NULL, &profiling_event);
 		queue.enqueueReadBuffer(buffer_B_sum, CL_TRUE, 0, output_size, &B_sum[0]);
 
-		//cout << B_sum;
 
 
-		// ============== Min Value ==============
+		// ============== Min Value FLOATS ==============
 		cl::Event profiling_min;
 
 		cl::Kernel kernel_min = cl::Kernel(program, "reduce_min_float");
@@ -264,16 +269,33 @@ int main(int argc, char **argv)
 		queue.enqueueReadBuffer(buffer_B_min, CL_TRUE, 0, output_size, &B_min[0]);
 
 
-		// ============== Max Value ==============
+
+		// ============== Max Value FLOATS ==============
 		cl::Event profiling_max;
 
-		cl::Kernel kernel_max = cl::Kernel(program, "reduce_max");
+		cl::Kernel kernel_max = cl::Kernel(program, "reduce_max_float");
 		kernel_max.setArg(0, buffer_temperatures);
 		kernel_max.setArg(1, buffer_B_max);
 		kernel_max.setArg(2, cl::Local(local_size * sizeof(myType)));
 
 		queue.enqueueNDRangeKernel(kernel_max, cl::NullRange, cl::NDRange(input_elements), cl::NDRange(local_size), NULL, &profiling_max);
 		queue.enqueueReadBuffer(buffer_B_max, CL_TRUE, 0, output_size, &B_max[0]);
+
+		while (B_max[local_size] != 0.0f)
+		{
+			kernel_max.setArg(0, buffer_B_max);
+			kernel_max.setArg(1, buffer_B_max);
+			kernel_max.setArg(2, cl::Local(local_size * sizeof(myType)));
+			queue.enqueueNDRangeKernel(kernel_max, cl::NullRange, cl::NDRange(input_elements), cl::NDRange(local_size), NULL, &profiling_max);
+			queue.enqueueReadBuffer(buffer_B_max, CL_TRUE, 0, output_size, &B_max[0]);
+		}
+
+		kernel_max.setArg(0, buffer_B_max);
+		kernel_max.setArg(1, buffer_B_max);
+		kernel_max.setArg(2, cl::Local(local_size * sizeof(myType)));
+		queue.enqueueNDRangeKernel(kernel_max, cl::NullRange, cl::NDRange(input_elements), cl::NDRange(local_size), NULL, &profiling_max);
+		queue.enqueueReadBuffer(buffer_B_max, CL_TRUE, 0, output_size, &B_max[0]);
+
 
 
 		// ============== STD Deviation ==============
@@ -290,17 +312,18 @@ int main(int argc, char **argv)
 		queue.enqueueReadBuffer(buffer_B_std, CL_TRUE, 0, output_size, &B_std[0]);
 
 
+
 		// ============== Sorted Vector ==============
 		cl::Event profiling_sort;
 
-		cl::Kernel kernel_sort = cl::Kernel(program, "sort_oddeven");
+		cl::Kernel kernel_sort = cl::Kernel(program, "sort");
 		kernel_sort.setArg(0, buffer_temperatures);
-		/*kernel_sort.setArg(1, buffer_B_sort);
-		kernel_sort.setArg(2, cl::Local(local_size * sizeof(myType)));*/
+		kernel_sort.setArg(1, buffer_B_sort);
+		kernel_sort.setArg(2, cl::Local(local_size * sizeof(myType)));
 
 		queue.enqueueNDRangeKernel(kernel_sort, cl::NullRange, cl::NDRange(input_elements), cl::NDRange(local_size), NULL, &profiling_sort);
-		//queue.enqueueReadBuffer(buffer_B_sort, CL_TRUE, 0, output_size, &B_sort[0]);
-		queue.enqueueReadBuffer(buffer_temperatures, CL_TRUE, 0, output_size, &temperatureValues[0]);
+		queue.enqueueReadBuffer(buffer_B_sort, CL_TRUE, 0, output_size, &B_sort[0]);
+		///queue.enqueueReadBuffer(buffer_temperatures, CL_TRUE, 0, output_size, &temperatureValues[0]);
 
 
 		// ============== Format Results ==============
