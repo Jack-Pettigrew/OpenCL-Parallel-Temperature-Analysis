@@ -12,7 +12,7 @@
 
 #include <iostream>
 #include <stdlib.h>
-#include "Utils.h"
+
 
 /* Pass
 - Basic Summary of weather data ( min/max/avg/standard deviation ) INTEGER VALUES
@@ -127,15 +127,14 @@ int main(int argc, char **argv)
 		if (!file.is_open())
 			cout << "\nTemperature file was not found!" << endl;
 
-
-
-		// ==============  Extract Floats from String Vector  ==============
-
 		// Read fileDir for raw input
 		while (file >> word)
 		{
 			temperatureInfo.push_back(word);
 		}
+
+		// ==============  Extract Floats from String Vector  ==============
+
 
 		// Extract temp values from raw Vector
 		for (int i = 5; i < temperatureInfo.size(); i += 6)
@@ -144,13 +143,14 @@ int main(int argc, char **argv)
 			temperatureValues.push_back(temp);
 		}
 
+		// Used to calculate Average
 		int numOfElements = temperatureValues.size();
 
 
 
 		// ==============  Memory Allocation  ==============
 
-		size_t local_size = 64;												// OpenCL device Workgroup size (Too large = CL Size Errors)
+		size_t local_size = 64;												// OpenCL device Workgroup size (Non-multiple = CL_ERRORS)
 
 		size_t padding_size = temperatureValues.size() % local_size;		// Amount of appenable elements ('0')
 
