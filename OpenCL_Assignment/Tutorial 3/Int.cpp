@@ -1,3 +1,5 @@
+// Jack Pettigrew - PET15593452
+
 #define CL_USE_DEPRECATED_OPENCL_1_2_APIS
 #define __CL_ENABLE_EXCEPTIONS
 
@@ -97,8 +99,8 @@ int main(int argc, char **argv)
 		//fileDir = "..\\..\\temp_lincolnshire_short.txt";
 		//fileDir = "..\\..\\temp_lincolnshire.txt";
 		/// Aboslute Pathing
-		fileDir = "C:\\Users\\Student\\Desktop\\OpenCL-Assignment\\OpenCL_Assignment\\temp_lincolnshire_short.txt";
-		//fileDir = "C:\\Users\\Student\\Desktop\\OpenCL-Assignment\\OpenCL_Assignment\\temp_lincolnshire.txt";
+		//fileDir = "C:\\Users\\Student\\Desktop\\OpenCL-Assignment\\OpenCL_Assignment\\temp_lincolnshire_short.txt";
+		fileDir = "C:\\Users\\Student\\Desktop\\OpenCL-Assignment\\OpenCL_Assignment\\temp_lincolnshire.txt";
 
 		file.open(fileDir);
 
