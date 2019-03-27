@@ -14,28 +14,6 @@
 
 #include "Utils.h"
 
-/* Pass
-- Basic Summary of weather data ( min/max/avg/standard deviation ) INTEGER VALUES
-- Memory transfer times are provided
-- Readable Code
-
-   2:2
-- Attempt to optimise code using INTERGER VALUES
-- Program Performance Provided
-- Clear Coding style with comments
-
-   2:1
-- Optimised Kernels using real temperature values FLOAT VALUES
-- Program performance well reported and interpreted
-- Well commented code
-
-   1st
-- Basic + Median-based statistics on real temp values FLOAT VALUES
-- Local memory optimisations considered
-- Program performance clearly interpreted in detail
-- Optimised, efficient, well-structured, commented in detail
-*/
-
 // Launch Arguments (e.g. "Tutorial1 - p")
 void print_help() {
 	std::cerr << "Application usage:" << std::endl;
@@ -82,7 +60,7 @@ int main(int argc, char **argv)
 		cl::Program::Sources sources;
 
 		// Load kernel to sources
-		AddSources(sources, "my_kernels_1.cl");
+		AddSources(sources, "my_kernels_3.cl");
 
 		// Create program from Context + Sources
 		cl::Program program(context, sources);
@@ -119,8 +97,8 @@ int main(int argc, char **argv)
 		//fileDir = "..\\..\\temp_lincolnshire.txt";
 
 		/// Aboslute Pathing
-		//fileDir = "C:\\Users\\Student\\Desktop\\OpenCL-Assignment\\OpenCL_Assignment\\temp_lincolnshire_short.txt";
-		fileDir = "C:\\Users\\Student\\Desktop\\OpenCL-Assignment\\OpenCL_Assignment\\temp_lincolnshire.txt";
+		fileDir = "C:\\Users\\Student\\Desktop\\OpenCL-Assignment\\OpenCL_Assignment\\temp_lincolnshire_short.txt";
+		//fileDir = "C:\\Users\\Student\\Desktop\\OpenCL-Assignment\\OpenCL_Assignment\\temp_lincolnshire.txt";
 
 		file.open(fileDir);
 
@@ -140,7 +118,7 @@ int main(int argc, char **argv)
 		for (int i = 5; i < temperatureInfo.size(); i += 6)
 		{
 			float temp = strtof(temperatureInfo[i].c_str(), 0);
-			temp * 10;
+			temp *= 10;
 			temperatureValues.push_back(temp);
 		}
 
@@ -179,7 +157,6 @@ int main(int argc, char **argv)
 		std::vector<myType> B_sum(input_elements);
 		std::vector<myType> B_min(input_elements);
 		std::vector<myType> B_max(input_elements);
-		std::vector<myType> B_sort(input_elements);
 		std::vector<myType> B_std(input_elements);
 
 		// Resulting Vector Size
@@ -197,7 +174,6 @@ int main(int argc, char **argv)
 		cl::Buffer buffer_B_sum(context, CL_MEM_READ_WRITE, output_size);
 		cl::Buffer buffer_B_min(context, CL_MEM_READ_WRITE, output_size);
 		cl::Buffer buffer_B_max(context, CL_MEM_READ_WRITE, output_size);
-		cl::Buffer buffer_B_sort(context, CL_MEM_READ_WRITE, output_size);
 		cl::Buffer buffer_B_std(context, CL_MEM_READ_WRITE, output_size);
 
 
@@ -211,7 +187,6 @@ int main(int argc, char **argv)
 		queue.enqueueFillBuffer(buffer_B_sum, 0, 0, output_size);
 		queue.enqueueFillBuffer(buffer_B_min, 0, 0, output_size);
 		queue.enqueueFillBuffer(buffer_B_max, 0, 0, output_size);
-		queue.enqueueFillBuffer(buffer_B_sort, 0, 0, output_size);
 		queue.enqueueFillBuffer(buffer_B_std, 0, 0, output_size);
 
 
@@ -281,13 +256,13 @@ int main(int argc, char **argv)
 
 
 		// ============== Format Results ==============
-		float sum = B_sum[0] / 10.0f;
-		float avg = sum / numOfElements;
-		float min_value = (float)B_min[0] / 10.0f;
-		float max_value = (float)B_max[0] / 10.0f;
-		float variance = (B_std[0] / B_std.size()) / 10.0f;
+		float sum = B_sum[0];
+		sum /= 10;
+		float avg = (sum / numOfElements);
+		float min_value = (float)B_min[0] / 10;
+		float max_value = (float)B_max[0] / 10;
+		float variance = (B_std[0] / B_std.size());
 		float std_dev = sqrt(variance);
-
 
 
 		// ==============  Output Results + Profiling  ==============
@@ -309,7 +284,6 @@ int main(int argc, char **argv)
 		std::cout << "Min Time:	" << profiling_min.getProfilingInfo<CL_PROFILING_COMMAND_END>() - profiling_min.getProfilingInfo<CL_PROFILING_COMMAND_START>() << " [ns]" << endl;
 		std::cout << "Max Time:	" << profiling_max.getProfilingInfo<CL_PROFILING_COMMAND_END>() - profiling_max.getProfilingInfo<CL_PROFILING_COMMAND_START>() << " [ns]" << endl;
 		std::cout << "Std Time:	" << profiling_std.getProfilingInfo<CL_PROFILING_COMMAND_END>() - profiling_std.getProfilingInfo<CL_PROFILING_COMMAND_START>() << " [ns]" << endl << endl;
-		///std::cout << "Median finish:	"	<< profiling_sort.getProfilingInfo<CL_PROFILING_COMMAND_END>() - profiling_sort.getProfilingInfo<CL_PROFILING_COMMAND_START>() << " ns (includes Sort)" << endl << endl;
 
 		std::cout << "Total Program Execution Time: " << profiling_max.getProfilingInfo<CL_PROFILING_COMMAND_END>() - profiling_event.getProfilingInfo<CL_PROFILING_COMMAND_START>() << " ns \n" << endl;
 

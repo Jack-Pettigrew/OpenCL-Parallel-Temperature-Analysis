@@ -15,28 +15,6 @@
 #include "Utils.h"
 
 
-/* Pass
-- Basic Summary of weather data ( min/max/avg/standard deviation ) INTEGER VALUES
-- Memory transfer times are provided
-- Readable Code
-
-   2:2
-- Attempt to optimise code using INTERGER VALUES
-- Program Performance Provided
-- Clear Coding style with comments
-
-   2:1
-- Optimised Kernels using real temperature values FLOAT VALUES
-- Program performance well reported and interpreted
-- Well commented code
-
-   1st
-- Basic + Median-based statistics on real temp values FLOAT VALUES
-- Local memory optimisations considered
-- Program performance clearly interpreted in detail
-- Optimised, efficient, well-structured, commented in detail
-*/
-
 // Launch Arguments (e.g. "Tutorial1 - p")
 void print_help() {
 	std::cerr << "Application usage:" << std::endl;
@@ -179,7 +157,6 @@ int main(int argc, char **argv)
 		std::vector<myType> B_sum(input_elements);
 		std::vector<myType> B_min(input_elements);
 		std::vector<myType> B_max(input_elements);
-		std::vector<myType> B_sort(input_elements);
 		std::vector<myType> B_std(input_elements);
 
 		// Resulting Vector Size
@@ -197,7 +174,6 @@ int main(int argc, char **argv)
 		cl::Buffer buffer_B_sum(context, CL_MEM_READ_WRITE, output_size);
 		cl::Buffer buffer_B_min(context, CL_MEM_READ_WRITE, output_size);
 		cl::Buffer buffer_B_max(context, CL_MEM_READ_WRITE, output_size);
-		cl::Buffer buffer_B_sort(context, CL_MEM_READ_WRITE, output_size);
 		cl::Buffer buffer_B_std(context, CL_MEM_READ_WRITE, output_size);
 
 
@@ -211,7 +187,6 @@ int main(int argc, char **argv)
 		queue.enqueueFillBuffer(buffer_B_sum, 0, 0, output_size);
 		queue.enqueueFillBuffer(buffer_B_min, 0, 0, output_size);
 		queue.enqueueFillBuffer(buffer_B_max, 0, 0, output_size);
-		queue.enqueueFillBuffer(buffer_B_sort, 0, 0, output_size);
 		queue.enqueueFillBuffer(buffer_B_std, 0, 0, output_size);
 
 
@@ -323,21 +298,6 @@ int main(int argc, char **argv)
 
 		}
 
-		
-
-		// ============== Sorted Vector ==============
-		/// Sort input vector and return sorted output
-
-		cl::Event profiling_sort;
-
-		cl::Kernel kernel_sort = cl::Kernel(program, "sort");
-		kernel_sort.setArg(0, buffer_temperatures);
-		kernel_sort.setArg(1, buffer_B_sort);
-		kernel_sort.setArg(2, cl::Local(local_size * sizeof(myType)));
-
-		queue.enqueueNDRangeKernel(kernel_sort, cl::NullRange, cl::NDRange(input_elements), cl::NDRange(local_size), NULL, &profiling_sort);
-		queue.enqueueReadBuffer(buffer_B_sort, CL_TRUE, 0, output_size, &B_sort[0]);
-		///queue.enqueueReadBuffer(buffer_temperatures, CL_TRUE, 0, output_size, &temperatureValues[0]);
 
 
 
@@ -348,9 +308,6 @@ int main(int argc, char **argv)
 		float max_value = (float)B_max[0];
 		float variance	= (B_std[0] / B_std.size());
 		float std_dev	= sqrt(variance);
-		float median	= (float)B_sort[(0.50 * B_sort.size())];
-		float median25	= (float)B_sort[(0.25 * B_sort.size())];
-		float median75	= (float)B_sort[(0.75 * B_sort.size())];
 		
 
 
@@ -367,16 +324,12 @@ int main(int argc, char **argv)
 		std::cout << "Min		= "			<< min_value << endl;
 		std::cout << "Max		= "			<< max_value << endl;
 		std::cout << "Std Deviation   = "	<< std_dev << endl << endl;
-		std::cout << "Median		= "		<< median << endl;
-		std::cout << "25th Percentile = "	<< median25 << endl;
-		std::cout << "75th Percentile = "	<< median75 << endl << endl;
 
 		std::cout << "********************* Profiling *********************" << endl;
 		std::cout << "AVG Time:	"	<< profiling_event.getProfilingInfo<CL_PROFILING_COMMAND_END>() - profiling_event.getProfilingInfo<CL_PROFILING_COMMAND_START>() << " [ns]" << endl;
 		std::cout << "Min Time:	"	<< profiling_min.getProfilingInfo<CL_PROFILING_COMMAND_END>() - profiling_min.getProfilingInfo<CL_PROFILING_COMMAND_START>() << " [ns]" << endl;
 		std::cout << "Max Time:	"	<< profiling_max.getProfilingInfo<CL_PROFILING_COMMAND_END>() - profiling_max.getProfilingInfo<CL_PROFILING_COMMAND_START>() << " [ns]" << endl;
 		std::cout << "Std Time:	" << profiling_std.getProfilingInfo<CL_PROFILING_COMMAND_END>() - profiling_std.getProfilingInfo<CL_PROFILING_COMMAND_START>() << " [ns]" << endl << endl;
-		///std::cout << "Median finish:	"	<< profiling_sort.getProfilingInfo<CL_PROFILING_COMMAND_END>() - profiling_sort.getProfilingInfo<CL_PROFILING_COMMAND_START>() << " ns (includes Sort)" << endl << endl;
 
 		std::cout << "Total Program Execution Time: " << profiling_max.getProfilingInfo<CL_PROFILING_COMMAND_END>() - profiling_event.getProfilingInfo<CL_PROFILING_COMMAND_START>() << " ns \n" << endl;
 
