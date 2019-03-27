@@ -39,7 +39,6 @@ int main(int argc, char **argv)
 		else if (strcmp(argv[i], "-h") == 0) { print_help(); return 0;}
 	}
 
-	// Try loop entire Parallel Code for Errors
 	try {
 
 
@@ -79,12 +78,13 @@ int main(int argc, char **argv)
 
 #pragma endregion
 
-		// Value Types
+		/// Custom Type Def
 		typedef float myType;
 
 
 		// ==============  Read temperature file into String Vector  ==============
 
+		// Vectors for Raw and Numbered Temperatures
 		std::vector<string> temperatureInfo;	/// Holds file text
 		std::vector<myType> temperatureValues;	/// Holds all Temperature Floats
 
@@ -94,12 +94,11 @@ int main(int argc, char **argv)
 
 		// Directory of Temperature Files
 		/// Relative Pathing
-		//fileDir = "..\\..\\temp_lincolnshire_short.txt";
 		//fileDir = "..\\..\\temp_lincolnshire.txt";
-
+		//fileDir = "..\\..\\temp_lincolnshire_short.txt";
 		/// Aboslute Pathing
-		//fileDir = "C:\\Users\\Student\\Desktop\\OpenCL-Assignment\\OpenCL_Assignment\\temp_lincolnshire_short.txt";
 		fileDir = "C:\\Users\\Student\\Desktop\\OpenCL-Assignment\\OpenCL_Assignment\\temp_lincolnshire.txt";
+		//fileDir = "C:\\Users\\Student\\Desktop\\OpenCL-Assignment\\OpenCL_Assignment\\temp_lincolnshire_short.txt";
 
 		file.open(fileDir);
 
@@ -112,26 +111,27 @@ int main(int argc, char **argv)
 			temperatureInfo.push_back(word);
 		}
 
+
+
 		// ==============  Extract Floats from String Vector  ==============
 
-
-		// Extract temp values from raw Vector
+		/// Extract temp values from raw Vector
 		for (int i = 5; i < temperatureInfo.size(); i += 6)
 		{
 			float temp = strtof(temperatureInfo[i].c_str(), 0);
 			temperatureValues.push_back(temp);
 		}
 
-		// Used to calculate Average
+		/// Used to calculate Average
 		int numOfElements = temperatureValues.size();
 
 
 
 		// ==============  Memory Allocation  ==============
 
-		size_t local_size = 64;												// OpenCL device Workgroup size (Non-multiple = CL_ERRORS)
+		size_t local_size = 64;												/// OpenCL device Workgroup size (Non-multiple = CL_ERRORS)
 
-		size_t padding_size = temperatureValues.size() % local_size;		// Amount of appenable elements ('0')
+		size_t padding_size = temperatureValues.size() % local_size;		/// Amount of appenable elements ('0')
 
 		/* Workgroup Size Handling (Padding):
 
@@ -145,9 +145,9 @@ int main(int argc, char **argv)
 		}
 
 		// OpenCL data values
-		size_t input_elements = temperatureValues.size();					// number of elements
-		size_t input_size = temperatureValues.size() * sizeof(myType);		// size in bytes
-		size_t nr_group = input_elements / local_size;						// total number of workgroups to occur
+		size_t input_elements = temperatureValues.size();					/// number of elements
+		size_t input_size = temperatureValues.size() * sizeof(myType);		/// size in bytes
+		size_t nr_group = input_elements / local_size;						/// total number of workgroups to occur
 
 
 
@@ -203,16 +203,14 @@ int main(int argc, char **argv)
 		kernel_sum.setArg(1, buffer_B_sum);									/// Output Vector Write Buffer
 		kernel_sum.setArg(2, cl::Local(local_size * sizeof(myType)));		/// Local Memory size value
 		
-		// Queue 
+		// Queue Kernel
 		queue.enqueueNDRangeKernel(kernel_sum, cl::NullRange, cl::NDRange(input_elements), cl::NDRange(local_size), NULL, &profiling_event);
 		queue.enqueueReadBuffer(buffer_B_sum, CL_TRUE, 0, output_size, &B_sum[0]);
 
-		/// Float based reduction kernel
-		/// Requires recursion-esk kernel calls for 'manual' reduction sum
+		// Recall the Kernel as a Workgroup output Reduction-esk and Loop
 		while (B_sum[1] != 0.0f)
 		{
 
-			// Create Kernel call + Set Args
 			kernel_sum.setArg(0, buffer_B_sum);
 			kernel_sum.setArg(1, buffer_B_sum);
 			kernel_sum.setArg(2, cl::Local(local_size * sizeof(myType)));
@@ -300,7 +298,6 @@ int main(int argc, char **argv)
 
 
 
-
 		// ============== Format Results ==============
 		float sum		= B_sum[0];
 		float avg		= sum / numOfElements;
@@ -338,7 +335,7 @@ int main(int argc, char **argv)
 		std::cerr << "ERROR: " << err.what() << ", " << getErrorString(err.err()) << std::endl;
 	}
 
-	// Pauses Visual Studio Debug
+	// Pauses Visual Studio Runtime
 	system("pause");
 
 	return 0;

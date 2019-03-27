@@ -1,10 +1,4 @@
-﻿// a simple OpenCL kernel which adds two vectors A and B together into a third vector C
-kernel void add(global const int* A, global const int* B, global int* C) {
-	int id = get_global_id(0);
-	C[id] = A[id] + B[id];
-}
-
-// Reduce Sum of all Vector Elements from vector A to B using a local memory Vector scratch
+﻿// Reduce Sum of all Vector Elements from vector A to B using a local memory Vector scratch
 kernel void reduce_sum(global const int* A, global int* B, local int* scratch)
 {
 	int id = get_global_id(0);			// Global Element Workgroup ID

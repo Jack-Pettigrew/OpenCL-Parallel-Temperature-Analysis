@@ -84,6 +84,7 @@ int main(int argc, char **argv)
 
 		// ==============  Read temperature file into String Vector  ==============
 
+		// Vectors for Raw and Numbered Temperatures
 		std::vector<string> temperatureInfo;	/// Holds file text
 		std::vector<myType> temperatureValues;	/// Holds all Temperature Floats
 
@@ -95,7 +96,6 @@ int main(int argc, char **argv)
 		/// Relative Pathing
 		//fileDir = "..\\..\\temp_lincolnshire_short.txt";
 		//fileDir = "..\\..\\temp_lincolnshire.txt";
-
 		/// Aboslute Pathing
 		fileDir = "C:\\Users\\Student\\Desktop\\OpenCL-Assignment\\OpenCL_Assignment\\temp_lincolnshire_short.txt";
 		//fileDir = "C:\\Users\\Student\\Desktop\\OpenCL-Assignment\\OpenCL_Assignment\\temp_lincolnshire.txt";
@@ -129,9 +129,9 @@ int main(int argc, char **argv)
 
 		// ==============  Memory Allocation  ==============
 
-		size_t local_size = 64;												// OpenCL device Workgroup size (Non-multiple = CL_ERRORS)
+		size_t local_size = 64;												/// OpenCL device Workgroup size (Non-multiple = CL_ERRORS)
 
-		size_t padding_size = temperatureValues.size() % local_size;		// Amount of appenable elements ('0')
+		size_t padding_size = temperatureValues.size() % local_size;		/// Amount of appenable elements ('0')
 
 		/* Workgroup Size Handling (Padding):
 
@@ -145,9 +145,9 @@ int main(int argc, char **argv)
 		}
 
 		// OpenCL data values
-		size_t input_elements = temperatureValues.size();					// number of elements
-		size_t input_size = temperatureValues.size() * sizeof(myType);		// size in bytes
-		size_t nr_group = input_elements / local_size;						// total number of workgroups to occur
+		size_t input_elements = temperatureValues.size();					/// number of elements
+		size_t input_size = temperatureValues.size() * sizeof(myType);		/// size in bytes
+		size_t nr_group = input_elements / local_size;						/// total number of workgroups to occur
 
 
 
@@ -191,7 +191,7 @@ int main(int argc, char **argv)
 
 
 
-		// ============== Sum FLOATS ==============
+		// ============== Sum INTS ==============
 		/// Returns the sum of all values in the first element of the vector
 
 		// Create Profiling Event (kernel information)
@@ -209,7 +209,7 @@ int main(int argc, char **argv)
 
 
 
-		// ============== Min Value FLOATS ==============
+		// ============== Min Value INTS ==============
 		/// Returns Max value in input vector and stores it in the first element
 
 
@@ -224,7 +224,7 @@ int main(int argc, char **argv)
 		queue.enqueueReadBuffer(buffer_B_min, CL_TRUE, 0, output_size, &B_min[0]);
 
 
-		// ============== Max Value FLOATS ==============
+		// ============== Max Value INTS ==============
 		/// Returns Max value in input vector and stores it in the first element
 
 		cl::Event profiling_max;
@@ -261,7 +261,7 @@ int main(int argc, char **argv)
 		float avg = (sum / numOfElements);
 		float min_value = (float)B_min[0] / 10;
 		float max_value = (float)B_max[0] / 10;
-		float variance = (B_std[0] / B_std.size());
+		float variance = (B_std[0] / numOfElements) / 10.0f;
 		float std_dev = sqrt(variance);
 
 
