@@ -1,207 +1,260 @@
-﻿//fixed 4 step reduce
-kernel void reduce_add_1(global const int* A, global int* B) {
+﻿// a simple OpenCL kernel which adds two vectors A and B together into a third vector C
+kernel void add(global const int* A, global const int* B, global int* C) {
 	int id = get_global_id(0);
-	int N = get_global_size(0);
-
-	B[id] = A[id]; //copy input to output
-
-	barrier(CLK_GLOBAL_MEM_FENCE); //wait for all threads to finish copying
-	 
-	//perform reduce on the output array
-	//modulo operator is used to skip a set of values (e.g. 2 in the next line)
-	//we also check if the added element is within bounds (i.e. < N)
-	if (((id % 2) == 0) && ((id + 1) < N)) 
-		B[id] += B[id + 1];
-
-	barrier(CLK_GLOBAL_MEM_FENCE);
-
-	if (((id % 4) == 0) && ((id + 2) < N)) 
-		B[id] += B[id + 2];
-
-	barrier(CLK_GLOBAL_MEM_FENCE);
-
-	if (((id % 8) == 0) && ((id + 4) < N)) 
-		B[id] += B[id + 4];
-
-	barrier(CLK_GLOBAL_MEM_FENCE);
-
-	if (((id % 16) == 0) && ((id + 8) < N)) 
-		B[id] += B[id + 8];
+	C[id] = A[id] + B[id];
 }
 
-//flexible step reduce 
-kernel void reduce_add_2(global const int* A, global int* B) {
+// Reduce Sum of all Vector Elements from vector A to B using a local memory Vector scratch
+kernel void reduce_sum(global const int* A, global int* B, local int* scratch)
+{
+	int id = get_global_id(0);			// Global Element Workgroup ID
+	int local_id = get_local_id(0);		// Local Element Workgroup ID
+	int N = get_local_size(0);			// Size of Local Workgroup
+
+	// Part 1: Store into local memory
+	scratch[local_id] = A[id];
+
+	// Wait for Global to Local memory complete
+	barrier(CLK_LOCAL_MEM_FENCE);
+
+	/* Part 2:
+		Automated Stride Loop:
+
+		Stride = i (doubled each step) 1 -> 2 -> 4 -> 8 -> 16 etc...
+
+		Add results into Cached Vector and then return the Cached vector to the output vector B
+	*/
+	for (int i = 1; i < N; i *= 2)
+	{
+		if (!(local_id % (i * 2)) && ((local_id + i) < N))
+		{
+			scratch[local_id] += scratch[local_id + i];
+		}
+
+		barrier(CLK_LOCAL_MEM_FENCE);
+	}
+
+	// Part 3: Add each Thread result together via Atomic_Add into Output Vector
+	if (!local_id) {
+		atomic_add(&B[0], scratch[local_id]);
+	}
+}
+
+// Reduce Min value given in vector A outputted in vector B via local memory vector Scratch
+kernel void reduce_min(global const int* A, global int* B, local int* scratch)
+{
 	int id = get_global_id(0);
-	int N = get_global_size(0);
+	int local_id = get_local_id(0);
+	int N = get_local_size(0);
 
-	B[id] = A[id];
+	// Part 1: Store into local memory
+	scratch[local_id] = A[id];
 
-	barrier(CLK_GLOBAL_MEM_FENCE);
+	// Wait for Global to Local memory complete
+	barrier(CLK_LOCAL_MEM_FENCE);
 
-	for (int i = 1; i < N; i *= 2) { //i is a stride
-		if (!(id % (i * 2)) && ((id + i) < N)) 
-			B[id] += B[id + i];
+	// Part 2: Automated Stride Loop:
+	for (int stride = 1; stride < N; stride *= 2)
+	{
+		if (!(local_id % (stride * 2)) && ((local_id + stride) < N))
+		{
+			if (scratch[local_id + stride] < scratch[local_id])
+			{
+				scratch[local_id] = scratch[local_id + stride];
+			}
+		}
+
+		barrier(CLK_LOCAL_MEM_FENCE);
+	}
+
+	// Part 3: Atomic_Min
+	if (!local_id) {
+		atomic_min(&B[0], scratch[local_id]);
+	}
+}
+
+// Reduce Max value given in vector A outputted in vector B via local memory vector Scratch
+kernel void reduce_max(global const int* A, global int* B, local int* scratch)
+{
+	int id = get_global_id(0);			// Global Element Workgroup ID
+	int local_id = get_local_id(0);		// Local Element Workgroup ID
+	int N = get_local_size(0);			// Local Element Input Size
+
+	// Part 1: Store into local memory
+	scratch[local_id] = A[id];
+
+	// Wait for Global to Local memory complete
+	barrier(CLK_LOCAL_MEM_FENCE);
+
+	// Part 2: Automated Stride Loop:
+	for (int stride = 1; stride < N; stride *= 2)
+	{
+		if (!(local_id % (stride * 2)) && ((local_id + stride) < N))
+		{
+			if (scratch[local_id + stride] > scratch[local_id])
+			{
+				scratch[local_id] = scratch[local_id + stride];
+			}
+		}
+
+		barrier(CLK_LOCAL_MEM_FENCE);
+	}
+
+	// Part 3: Atomic_Min
+	if (!local_id) {
+		atomic_max(&B[0], scratch[local_id]);
+	}
+}
+
+/*	Sort Input into Numerical Order
+
+	As referenced by Eric Bainville: http://www.bealto.com/gpu-sorting_parallel-selection.html
+*/
+kernel void sort(global const int* A, global int* B, local int* scratch)
+{
+	int id = get_global_id(0);      // Global ID
+	int local_id = get_local_id(0);	// Local ID
+	int N = get_global_size(0);     // Input size
+	int wg = get_local_size(0);     // Workgroup size
+	int iKey = A[id];				// Input key for current thread
+
+	// Output index position
+	int pos = 0;
+
+	for (int i = 0; i < N; i += wg)
+	{
+		barrier(CLK_LOCAL_MEM_FENCE);
+
+		for (int index = local_id; index < wg; index += wg)
+		{
+			scratch[index] = A[i + index];
+		}
+
+		barrier(CLK_LOCAL_MEM_FENCE);
+
+		// Loop on all values in Scratch
+		for (int index = 0; index < wg; index++)
+		{
+			int jKey = scratch[index];
+			bool smaller = (jKey < iKey) || (jKey == iKey && (i + index) < id); // in[j] < in[i] ?
+			pos += (smaller) ? 1 : 0;
+		}
+	}
+
+	B[pos] = iKey;
+
+}
+
+// LECTURE SORT ATTEMPT
+//// Compares value A with B and exchanges if unordered
+//void cmpxchg(global int* A, global int* B) 
+//{
+//	
+//	if (*A > *B) {
+//		// Swap
+//		int t = *A; 
+//		*A = *B; 
+//		*B = t;
+//	}
+//
+//}
+//
+//// Checks each element is ordered in Odd/Even rotation
+//kernel void sort_oddeven(global int* A) 
+//{
+//	int id = get_global_id(0); 
+//	int N = get_global_size(0);
+//
+//	for (int i = 0; i < N; i += 2)
+//	{
+//		if (id % 2 == 1 && id + 1 < N)	// Odd Step
+//			cmpxchg(&A[id], &A[id + 1]);
+//
+//		if (id % 2 == 0 && id + 1 < N)	// Even Step
+//			cmpxchg(&A[id], &A[id + 1]);
+//	}
+//}
+
+/*  BITONIC SORT ATTEMPT
+
+// Compares value A with B and exchanges in Ascend/Descend rotation
+void cmpxchg(global int* A, global int* B, bool dir)
+{
+	if ((!dir && *A > *B) || (dir && *A < *B)) {
+		int t = *A;
+		*A = *B;
+		*B = t;
+	}
+}
+
+// Merge Bitonic sequences
+void bitonic_merge(int id, global int* A, int N, bool dir)
+{
+	// Split into bitonic sequences each iteration
+	for (int i = N/2; i > 0; i /= 2)
+	{
+
+		if ((id % (id * 2)) < i)
+			cmpxchg(&A[id], &A[id + 1], dir);
 
 		barrier(CLK_GLOBAL_MEM_FENCE);
 	}
 }
 
-//reduce using local memory (so called privatisation)
-kernel void reduce_add_3(global const int* A, global int* B, local int* scratch) {
-	int id = get_global_id(0);
-	int lid = get_local_id(0);
-	int N = get_local_size(0);
-
-	//cache all N values from global memory to local memory
-	scratch[lid] = A[id];
-
-	barrier(CLK_LOCAL_MEM_FENCE);//wait for all local threads to finish copying from global to local memory
-
-	for (int i = 1; i < N; i *= 2) {
-		if (!(lid % (i * 2)) && ((lid + i) < N)) 
-			scratch[lid] += scratch[lid + i];
-
-		barrier(CLK_LOCAL_MEM_FENCE);
-	}
-
-	//copy the cache to output array
-	B[id] = scratch[lid];
-}
-
-//reduce using local memory + accumulation of local sums into a single location
-//works with any number of groups - not optimal!
-kernel void reduce_add_4(global const int* A, global int* B, local int* scratch) {
-	int id = get_global_id(0);
-	int lid = get_local_id(0);
-	int N = get_local_size(0);
-
-	//cache all N values from global memory to local memory
-	scratch[lid] = A[id];
-
-	barrier(CLK_LOCAL_MEM_FENCE);//wait for all local threads to finish copying from global to local memory
-
-	for (int i = 1; i < N; i *= 2) {
-		if (!(lid % (i * 2)) && ((lid + i) < N)) 
-			scratch[lid] += scratch[lid + i];
-
-		barrier(CLK_LOCAL_MEM_FENCE);
-	}
-
-	//we add results from all local groups to the first element of the array
-	//serial operation! but works for any group size
-	//copy the cache to output array
-	if (!lid) {
-		atomic_add(&B[0],scratch[lid]);
-	}
-}
-
-//a very simple histogram implementation
-kernel void hist_simple(global const int* A, global int* H) { 
-	int id = get_global_id(0);
-
-	//assumes that H has been initialised to 0
-	int bin_index = A[id];//take value as a bin index
-
-	atomic_inc(&H[bin_index]);//serial operation, not very efficient!
-}
-
-//Hillis-Steele basic inclusive scan
-//requires additional buffer B to avoid data overwrite 
-kernel void scan_hs(global int* A, global int* B) {
+// Conducts Sorting algorithm via Bitonic Sort
+kernel void bitonic_sort(global int* A)
+{
 	int id = get_global_id(0);
 	int N = get_global_size(0);
-	global int* C;
 
-	for (int stride = 1; stride < N; stride *= 2) {
-		B[id] = A[id];
-		if (id >= stride)
-			B[id] += A[id - stride];
+	for (int i = 1; i < N / 2; i *= 2)
+	{
+		if (id % (i * 4) < i * 2)
+			bitonic_merge(id, A, i * 2, false);	// Bitonic Ascending
 
-		barrier(CLK_GLOBAL_MEM_FENCE); //sync the step
+		else if ((id + i * 2) % (i * 4) < i * 2)
+			bitonic_merge(id, A, i * 2, true);	// Bitonic Descending
 
-		C = A; A = B; B = C; //swap A & B between steps
+		barrier(CLK_GLOBAL_MEM_FENCE);
 	}
-}
-
-//a double-buffered version of the Hillis-Steele inclusive scan
-//requires two additional input arguments which correspond to two local buffers
-kernel void scan_add(__global const int* A, global int* B, local int* scratch_1, local int* scratch_2) {
-	int id = get_global_id(0);
-	int lid = get_local_id(0);
-	int N = get_local_size(0);
-	local int *scratch_3;//used for buffer swap
-
-	//cache all N values from global memory to local memory
-	scratch_1[lid] = A[id];
-
-	barrier(CLK_LOCAL_MEM_FENCE);//wait for all local threads to finish copying from global to local memory
-
-	for (int i = 1; i < N; i *= 2) {
-		if (lid >= i)
-			scratch_2[lid] = scratch_1[lid] + scratch_1[lid - i];
-		else
-			scratch_2[lid] = scratch_1[lid];
-
-		barrier(CLK_LOCAL_MEM_FENCE);
-
-		//buffer swap
-		scratch_3 = scratch_2;
-		scratch_2 = scratch_1;
-		scratch_1 = scratch_3;
-	}
-
-	//copy the cache to output array
-	B[id] = scratch_1[lid];
-}
-
-//Blelloch basic exclusive scan
-kernel void scan_bl(global int* A) {
-	int id = get_global_id(0);
-	int N = get_global_size(0);
-	int t;
-
-	//up-sweep
-	for (int stride = 1; stride < N; stride *= 2) {
-		if (((id + 1) % (stride * 2)) == 0)
-			A[id] += A[id - stride];
-
-		barrier(CLK_GLOBAL_MEM_FENCE); //sync the step
-	}
-
-	//down-sweep
 	if (id == 0)
-		A[N - 1] = 0;//exclusive scan
+		bitonic_merge(id, A, N, false);			// Final Merge
 
-	barrier(CLK_GLOBAL_MEM_FENCE); //sync the step
+}
 
-	for (int stride = N / 2; stride > 0; stride /= 2) {
-		if (((id + 1) % (stride * 2)) == 0) {
-			t = A[id];
-			A[id] += A[id - stride]; //reduce 
-			A[id - stride] = t;		 //move
+*/
+
+// Returns Vector containing the Standard Deviation of the Sum input
+kernel void std_dev(global const int* A, global int* B, global const int* sum, local int* scratch)
+{
+	int id = get_global_id(0);
+	int local_id = get_local_id(0);
+	int N = get_local_size(0);
+
+	// Calculate Mean (A = Sum Output)
+	int avg = sum[0] / get_global_size(0);
+
+	// Copy the square of each distance to the Mean into Local_Mem
+	scratch[local_id] = ((A[id] - avg) * (A[id] - avg)) / 10;
+
+
+	// Sync
+	barrier(CLK_LOCAL_MEM_FENCE);
+
+
+	// Reduce Addition all differences
+	for (int i = 1; i < N; i *= 2)
+	{
+		if (!(local_id % (i * 2)) && ((local_id + i) < N))
+		{
+			scratch[local_id] += scratch[local_id + i];
 		}
 
-		barrier(CLK_GLOBAL_MEM_FENCE); //sync the step
+		barrier(CLK_LOCAL_MEM_FENCE);
 	}
-}
 
-//calculates the block sums
-kernel void block_sum(global const int* A, global int* B, int local_size) {
-	int id = get_global_id(0);
-	B[id] = A[(id+1)*local_size-1];
-}
+	// Atomically Add all Workgroup Local Additions
+	if (!local_id)
+		atomic_add(&B[0], scratch[local_id]);
 
-//simple exclusive serial scan based on atomic operations - sufficient for small number of elements
-kernel void scan_add_atomic(global int* A, global int* B) {
-	int id = get_global_id(0);
-	int N = get_global_size(0);
-	for (int i = id+1; i < N; i++)
-		atomic_add(&B[i], A[id]);
-}
-
-//adjust the values stored in partial scans by adding block sums to corresponding blocks
-kernel void scan_add_adjust(global int* A, global const int* B) {
-	int id = get_global_id(0);
-	int gid = get_group_id(0);
-	A[id] += B[gid];
 }

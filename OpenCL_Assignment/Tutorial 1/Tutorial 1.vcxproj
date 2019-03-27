@@ -184,7 +184,7 @@
     <Intel_OpenCL_Build_Rules Include="my_kernels_1.cl" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="Tutorial 1.cpp" />
+    <ClCompile Include="Float.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="my_kernels_1.cl" />

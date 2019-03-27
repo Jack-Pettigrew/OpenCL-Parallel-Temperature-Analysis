@@ -22,7 +22,7 @@
     </None>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="Tutorial 1.cpp">
+    <ClCompile Include="Float.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

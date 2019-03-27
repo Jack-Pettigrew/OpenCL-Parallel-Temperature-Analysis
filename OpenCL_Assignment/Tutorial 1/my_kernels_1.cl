@@ -53,12 +53,13 @@ kernel void reduce_sum_float(global const float* A, global float* B, local float
 	// Wait for Global to Local memory complete
 	barrier(CLK_LOCAL_MEM_FENCE);
 
-	for (int stride = N / 2; stride > 0; stride /= 2) {
-
+	for (int stride = N / 2; stride > 0; stride /= 2) 
+	{
 		if (local_id < stride)
 			scratch[local_id] += scratch[local_id + stride];
 
 		barrier(CLK_LOCAL_MEM_FENCE);
+
 	}
 
 	// Part 3: Add each Thread result together via Atomic_Add into Output Vector
