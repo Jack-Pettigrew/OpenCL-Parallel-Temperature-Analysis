@@ -10,8 +10,9 @@
 #include <CL/cl.hpp>
 #endif
 
-#include <iostream>
 #include <stdlib.h>
+
+#include "Utils.h"
 
 
 /* Pass

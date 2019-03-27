@@ -10,9 +10,9 @@
 #include <CL/cl.hpp>
 #endif
 
-#include <iostream>
 #include <stdlib.h>
 
+#include "Utils.h"
 
 /* Pass
 - Basic Summary of weather data ( min/max/avg/standard deviation ) INTEGER VALUES
@@ -280,22 +280,6 @@ int main(int argc, char **argv)
 
 
 
-		// ============== Sorted Vector ==============
-		/// Sort input vector and return sorted output
-
-		cl::Event profiling_sort;
-
-		cl::Kernel kernel_sort = cl::Kernel(program, "sort");
-		kernel_sort.setArg(0, buffer_temperatures);
-		kernel_sort.setArg(1, buffer_B_sort);
-		kernel_sort.setArg(2, cl::Local(local_size * sizeof(myType)));
-
-		queue.enqueueNDRangeKernel(kernel_sort, cl::NullRange, cl::NDRange(input_elements), cl::NDRange(local_size), NULL, &profiling_sort);
-		queue.enqueueReadBuffer(buffer_B_sort, CL_TRUE, 0, output_size, &B_sort[0]);
-		///queue.enqueueReadBuffer(buffer_temperatures, CL_TRUE, 0, output_size, &temperatureValues[0]);
-
-
-
 		// ============== Format Results ==============
 		float sum = B_sum[0] / 10.0f;
 		float avg = sum / numOfElements;
@@ -303,9 +287,6 @@ int main(int argc, char **argv)
 		float max_value = (float)B_max[0] / 10.0f;
 		float variance = (B_std[0] / B_std.size()) / 10.0f;
 		float std_dev = sqrt(variance);
-		float median = (float)B_sort[(0.50 * B_sort.size())] / 10.0f;
-		float median25 = (float)B_sort[(0.25 * B_sort.size())] / 10.0f;
-		float median75 = (float)B_sort[(0.75 * B_sort.size())] / 10.0f;
 
 
 
@@ -322,9 +303,6 @@ int main(int argc, char **argv)
 		std::cout << "Min		= " << min_value << endl;
 		std::cout << "Max		= " << max_value << endl;
 		std::cout << "Std Deviation   = " << std_dev << endl << endl;
-		std::cout << "Median		= " << median << endl;
-		std::cout << "25th Percentile = " << median25 << endl;
-		std::cout << "75th Percentile = " << median75 << endl << endl;
 
 		std::cout << "********************* Profiling *********************" << endl;
 		std::cout << "AVG Time:	" << profiling_event.getProfilingInfo<CL_PROFILING_COMMAND_END>() - profiling_event.getProfilingInfo<CL_PROFILING_COMMAND_START>() << " [ns]" << endl;
